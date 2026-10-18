@@ -1,0 +1,1873 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>LODE RUNNER: Neon Depths</title>
+<style>
+:root{--bg:#07111F;--steel:#24384B;--cyan:#54E7FF;--gold:#FFC857;--red:#FF657A;}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:#cfe6f5;font-family:system-ui,Segoe UI,Roboto,sans-serif;overflow:hidden}
+#app{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.screen{display:none;width:100%;height:100%;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px}
+.screen.active{display:flex}
+h1{font-size:clamp(24px,5vw,44px);letter-spacing:4px;color:var(--cyan);text-shadow:0 0 18px #54e7ff55}
+h1 b{color:var(--gold)}
+h2{font-size:clamp(18px,3vw,28px);color:var(--cyan)}
+.btn{background:#12283c;border:1px solid #3a5a75;color:#cfe6f5;padding:10px 22px;font-size:16px;border-radius:8px;cursor:pointer;min-width:48px;min-height:48px}
+.btn:hover{background:#1b3a55;border-color:var(--cyan)}
+.btn.primary{border-color:var(--gold);color:var(--gold)}
+.btn.small{padding:6px 12px;min-height:40px;font-size:14px}
+.row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center}
+.col{display:flex;flex-direction:column;gap:10px;align-items:center}
+.muted{color:#7d97ad;font-size:14px;max-width:640px;text-align:center}
+#gameWrap{position:relative;display:flex;flex-direction:column;align-items:center;width:100%;height:100%;justify-content:center}
+#hud{display:flex;gap:18px;align-items:center;padding:6px 12px;font-size:15px;color:#9fc3dd;flex-wrap:wrap;justify-content:center}
+#hud .gold{color:var(--gold)} #hud .lives{color:var(--red)} #hud .score{color:var(--cyan)}
+#gameCanvas{background:#050d18;border:1px solid #1c3247;max-width:100%;max-height:calc(100% - 40px);touch-action:none}
+#touchPad{position:absolute;inset:0;pointer-events:none;display:none}
+body.touch #touchPad{display:block}
+.tbtn{position:absolute;pointer-events:auto;width:64px;height:64px;border-radius:50%;background:#12283ccc;border:1px solid #3a5a75;color:#9fc3dd;font-size:22px;user-select:none;touch-action:none}
+.tbtn:active{background:#1b3a55}
+#tLeft{left:14px;bottom:88px}#tRight{left:150px;bottom:88px}#tUp{left:82px;bottom:160px}#tDown{left:82px;bottom:14px}
+#tDigL{right:150px;bottom:88px;color:var(--gold)}#tDigR{right:14px;bottom:88px;color:var(--gold)}
+#tPause{right:14px;top:10px;width:48px;height:48px;font-size:16px}
+.overlay{position:absolute;inset:0;background:#07111fdd;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:5}
+.overlay.active{display:flex}
+#levelGrid{display:grid;grid-template-columns:repeat(4,minmax(120px,180px));gap:10px;max-width:900px}
+.lvlCard{background:#0d1e30;border:1px solid #2a4258;border-radius:8px;padding:10px;text-align:left;cursor:pointer}
+.lvlCard:hover{border-color:var(--cyan)}
+.lvlCard.locked{opacity:.35;cursor:default}
+.lvlCard .zn{font-size:11px;color:#7d97ad}
+.lvlCard .nm{color:var(--cyan);font-size:14px}
+#editorWrap{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;align-items:flex-start;width:100%}
+#editorCanvas{border:1px solid #2a4258;background:#050d18;image-rendering:pixelated;touch-action:none}
+#editorPanel{display:flex;flex-direction:column;gap:8px;max-width:340px}
+#editorPanel .row{justify-content:flex-start}
+.brush{padding:6px 10px;font-size:13px;min-height:40px}
+.brush.sel{border-color:var(--gold);color:var(--gold)}
+#editorMsg{font-size:13px;color:var(--red);white-space:pre-wrap;max-height:140px;overflow:auto}
+#editorCoord{font-size:13px;color:#7d97ad}
+input[type=range]{accent-color:var(--cyan)}
+label{font-size:14px}
+select{background:#12283c;color:#cfe6f5;border:1px solid #3a5a75;border-radius:6px;padding:8px;font-size:15px}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#12283c;border:1px solid #3a5a75;padding:8px 16px;border-radius:8px;font-size:14px;display:none;z-index:9}
+#rotateHint{display:none;position:fixed;inset:0;background:#07111fee;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:8;text-align:center;padding:20px}
+@media (orientation:portrait){body.touch #rotateHint{display:flex}}
+kbd{background:#12283c;border:1px solid #3a5a75;border-radius:4px;padding:1px 6px;font-size:13px}
+table.help{border-collapse:collapse;font-size:14px}
+table.help td{padding:4px 10px;border-bottom:1px solid #1c3247}
+</style>
+</head>
+<body>
+<div id="app">
+  <section class="screen active" id="screen-menu">
+    <h1>LODE <b>RUNNER</b></h1>
+    <div class="muted">Neon Depths — соберите все энергетические слитки и поднимитесь к шлюзу. Прыжка нет.</div>
+    <div class="col">
+      <div class="row"><label>Сложность
+        <select id="menuDiff"><option value="easy">Легко</option><option value="normal" selected>Нормально</option><option value="hard">Сложно</option></select>
+      </label></div>
+      <button class="btn primary" id="btnNew">Новая игра</button>
+      <button class="btn" id="btnContinue">Продолжить</button>
+      <button class="btn" id="btnPractice">Практика</button>
+      <button class="btn" id="btnEditor">Редактор</button>
+      <button class="btn" id="btnSettings">Настройки</button>
+    </div>
+    <div class="muted">Управление: стрелки или WASD, копать — <kbd>Z</kbd>/<kbd>X</kbd> (в сторону взгляда), пауза <kbd>Esc</kbd>.</div>
+  </section>
+
+  <section class="screen" id="screen-levels">
+    <h2 id="levelsTitle">Выбор уровня</h2>
+    <div id="levelGrid"></div>
+    <div class="row"><button class="btn" id="btnLevelsBack">Назад</button></div>
+  </section>
+
+  <section class="screen" id="screen-tutorial">
+    <h2>Обучение</h2>
+    <table class="help">
+      <tr><td>Движение</td><td>Стрелки / WASD</td></tr>
+      <tr><td>Копать (в сторону взгляда; по диагонали вниз, а если там пусто — вбок на уровне тела)</td><td>Z / Q / X / E</td></tr>
+      <tr><td>Спрыгнуть с лестницы вниз</td><td>← / → на лестнице</td></tr>
+      <tr><td>Пауза / рестарт / звук / экран</td><td>Esc или P / R / M / F</td></tr>
+      <tr><td>Цель</td><td>Собрать всё золото, затем подняться к выходу наверху</td></tr>
+      <tr><td>Ямы</td><td>Кирпич зарастает через 6 секунд; внутри — гибель</td></tr>
+      <tr><td>Охранники</td><td>Заманивайте в ямы: пойманный безопасен и служит опорой</td></tr>
+    </table>
+    <div class="muted">Прыжка нет. Падение с любой высоты безопасно. Ложный блок выглядит как кирпич, но не держит.</div>
+    <button class="btn primary" id="btnTutOk">Понятно</button>
+  </section>
+
+  <section class="screen" id="screen-game">
+    <div id="gameWrap">
+      <div id="hud">
+        <span class="gold" id="hudGold">0/0</span>
+        <span class="lives" id="hudLives"></span>
+        <span id="hudLevel"></span>
+        <span class="score" id="hudScore">0</span>
+        <span id="hudTime">0:00</span>
+        <button class="btn small" id="hudPause">Пауза</button>
+      </div>
+      <canvas id="gameCanvas" width="1344" height="768"></canvas>
+      <div id="touchPad">
+        <div class="tbtn" id="tLeft">◀</div><div class="tbtn" id="tRight">▶</div>
+        <div class="tbtn" id="tUp">▲</div><div class="tbtn" id="tDown">▼</div>
+        <div class="tbtn" id="tDigL">⛏◀</div><div class="tbtn" id="tDigR">▶⛏</div>
+        <div class="tbtn" id="tPause">II</div>
+      </div>
+      <div class="overlay" id="ov-pause">
+        <h2>Пауза</h2>
+        <div class="col">
+          <button class="btn primary" id="btnResume">Продолжить</button>
+          <button class="btn" id="btnRestart">Заново (−1 жизнь)</button>
+          <button class="btn" id="btnQuit">В меню</button>
+        </div>
+      </div>
+      <div class="overlay" id="ov-level">
+        <h2 id="lvlDoneTitle">Уровень пройден</h2>
+        <div class="muted" id="lvlDoneInfo"></div>
+        <div class="col"><button class="btn primary" id="btnNextLevel">Дальше</button>
+        <button class="btn" id="btnLevelMenu">В меню</button></div>
+      </div>
+      <div class="overlay" id="ov-gameover">
+        <h2 style="color:var(--red)">Игра окончена</h2>
+        <div class="muted" id="goInfo"></div>
+        <div class="col"><button class="btn primary" id="btnGoMenu">В меню</button></div>
+      </div>
+      <div class="overlay" id="ov-campaign">
+        <h2 style="color:var(--gold)">Кампания пройдена!</h2>
+        <div class="muted" id="campInfo"></div>
+        <div class="col"><button class="btn primary" id="btnCampMenu">В меню</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="screen" id="screen-editor">
+    <h2>Редактор уровней</h2>
+    <div id="editorWrap">
+      <canvas id="editorCanvas" width="812" height="464"></canvas>
+      <div id="editorPanel">
+        <div class="row" id="brushRow"></div>
+        <div id="editorCoord">—</div>
+        <div class="row">
+          <button class="btn small" id="edUndo">Отменить</button>
+          <button class="btn small" id="edRedo">Вернуть</button>
+          <button class="btn small" id="edNew">Новая карта</button>
+        </div>
+        <div class="row">
+          <button class="btn small" id="edValidate">Проверить</button>
+          <button class="btn small" id="edTest">Тестировать</button>
+          <button class="btn small" id="edBack">В редактор</button>
+        </div>
+        <div class="row">
+          <button class="btn small" id="edSave">Сохранить</button>
+          <button class="btn small" id="edExport">Экспорт JSON</button>
+          <button class="btn small" id="edImport">Импорт JSON</button>
+          <input type="file" id="edFile" accept=".json,application/json" style="display:none">
+        </div>
+        <div class="row"><label>Название <input id="edTitle" maxlength="40" style="background:#12283c;color:#cfe6f5;border:1px solid #3a5a75;border-radius:6px;padding:6px"></label></div>
+        <div class="row"><label>Зона <select id="edTheme"><option value="mine">Шахта</option><option value="cool">Охлаждение</option><option value="reactor">Реактор</option></select></label></div>
+        <div id="editorMsg"></div>
+        <div class="muted" style="text-align:left">Кисти слоёв независимы: золото не стирает лестницу. Клик по карте ставит выбранный объект, повторный клик по золоту/охраннику/старту убирает его.</div>
+      </div>
+    </div>
+    <div class="row"><button class="btn" id="btnEditorBack">В меню</button></div>
+    <div class="row" id="customList"></div>
+  </section>
+
+  <section class="screen" id="screen-settings">
+    <h2>Настройки</h2>
+    <div class="col">
+      <label>Громкость эффектов <input type="range" id="setSfx" min="0" max="100"></label>
+      <label>Громкость музыки <input type="range" id="setMusic" min="0" max="100"></label>
+      <label>Качество <select id="setQuality"><option value="low">Низкое</option><option value="medium" selected>Среднее</option><option value="high">Высокое</option></select></label>
+      <label><input type="checkbox" id="setShake"> Тряска экрана</label>
+      <button class="btn primary" id="btnSettingsBack">Сохранить и назад</button>
+    </div>
+  </section>
+</div>
+<div id="toast"></div>
+<div id="rotateHint"><h2>Поверните устройство</h2><div class="muted">Игра рассчитана на горизонтальный экран. Меню доступно и в портретном режиме.</div><button class="btn" onclick="document.getElementById('rotateHint').style.display='none'">Всё равно играть</button></div>
+<script>
+'use strict';
+// ============ Config ============
+const CFG = {
+  W: 28, H: 16, CELL: 48,
+  DT: 1/60, MAX_STEPS: 6, MAX_FRAME: 0.10,
+  RUN: 4.2, LADDER: 3.2, BAR: 3.6, FALL: 7.0,
+  LADDER_TOL: 0.16, DIG_BUFFER: 0.12,
+  DIG_TIME: 0.24, HOLE_LIFE: 6.0, HOLE_WARN: 0.65,
+  CLIMB_OUT: 0.35, HOLE_IMMUNE: 0.45, BAR_RELEASE: 0.20,
+  RESPAWN_DELAY: 1.2, RESPAWN_ASSEMBLE: 0.6, RESPAWN_RETRY: 0.25,
+  HW: 0.275, HH: 0.41, // хитбокс 0.55 x 0.82
+  GOLD_GRAB: 0.35,
+  SCORE_GOLD: 250, SCORE_LEVEL: 1500, SCORE_TRAP: 75, SCORE_KILL: 75,
+  LIVES_START: 5, LIVES_MAX: 9,
+  NAV_RECOMPUTE: [0.20, 0.30],
+  DIFF: {
+    easy:   { guardSpeed: 2.5, trapTime: 2.8 },
+    normal: { guardSpeed: 3.0, trapTime: 2.2 },
+    hard:   { guardSpeed: 3.5, trapTime: 1.7 },
+  },
+};
+const T = { AIR:0, BRICK:1, MONOLITH:2, FALSE:3 };
+const F = { NONE:0, LADDER:1, BAR:2, HLADDER:3 };
+
+// ============ Уровни кампании ============
+// terrain: . воздух, # кирпич, M монолит, F ложный блок
+// fixtures: . нет, H лестница, B перекладина, ? скрытая лестница
+const LEVELS = [
+{ id:'lvl1', title:'Первый спуск', zone:'Шахта', theme:'mine', hint:'Соберите золото и поднимитесь к выходу. Прыжка нет.',
+  terrain:["............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","....G.......H......G....","########################","########################","########################","########################"],
+  fixtures:["........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................"],
+  playerSpawn:{c:1,r:11}, gold:[[4,11],[8,11],[21,11]], guards:[], respawn:[], exits:[[12,0]],
+  solution:'идти вправо по полу, собрать 3 слитка, подняться по лестнице c12 до выхода (12,0).' },
+{ id:'lvl2', title:'Над пропастью', zone:'Шахта', theme:'mine', hint:'Перекладина: висните под ней и отпускайте вниз.',
+  terrain:["....................H...","....................H...","....................H...","....................H...","....................H...","....................H...","....................H...","....................H...","....................H...","....................H...","....................H...","....................H...","########........H###########","########........H###########","########........H###########","########........H###########"],
+  fixtures:["........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........BBBBBBBB........","........................","........................","........................","........................","........................"],
+  playerSpawn:{c:3,r:11}, gold:[[5,11],[22,11],[25,11]], guards:[], respawn:[], exits:[[20,0]],
+  solution:'собрать слиток слева; шагнуть в пропасть на c8 — схватиться за перекладину, повиснуть и проехать до c15; отпустить вниз, дойти до dna и по лестнице c16 подняться на правый берег; собрать слитки справа; по лестнице c20 к выходу.' },
+{ id:'lvl3', title:'Первый перехват', zone:'Шахта', theme:'mine', hint:'Выкопайте яму на пути охранника.',
+  terrain:["............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","........................","########################","########################","########################","########################"],
+  fixtures:["........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................"],
+  playerSpawn:{c:2,r:11}, gold:[[6,11],[15,11],[24,11]], guards:[[20,11]], respawn:[[4,1],[23,1]], exits:[[12,0]],
+  solution:'собрать золото; когда охранник близко, выкопать яму под ним (копать в пол рядом с ним), он упадёт; затем лестница c12 к выходу.' },
+{ id:'lvl4', title:'Возвращение слитка', zone:'Шахта', theme:'mine', hint:'Охранник унёс золото — поймайте его и заберите слиток.',
+  terrain:["............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","........................","########################","########################","########################","########################"],
+  fixtures:["........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................"],
+  playerSpawn:{c:2,r:11}, gold:[[19,11]], guards:[[21,11]], respawn:[[4,1],[23,1]], exits:[[12,0]],
+  solution:'охранник сразу берёт слиток (19,11) и преследует; завести его в выкопанную яму — слиток выпадет над ямой; собрать; лестница c12 к выходу.' },
+{ id:'lvl5', title:'Два маршрута', zone:'Охлаждение', theme:'cool', hint:'Два охранника — выбирайте лестницы с умом.',
+  terrain:["......H.........H.......","......H.........H.......","......H.........H.......","......H.........H.......","......H.........H.......","......H.........H.......","......H.........H.......","......H.........H.......","......H.........H.......","......H.........H.......","......H.........H.......","........................","########################","########################","########################","########################"],
+  fixtures:["........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................"],
+  playerSpawn:{c:2,r:11}, gold:[[9,11],[20,11],[26,11]], guards:[[12,11],[24,11]], respawn:[[4,1],[23,1]], exits:[[6,0],[16,0]],
+  solution:'собрать три слитка по полу; уйти от двух охранников к дальней лестнице; выход наверху.' },
+{ id:'lvl6', title:'Ложный пол', zone:'Охлаждение', theme:'cool', hint:'Некоторые блоки выглядят как кирпич, но не держат.',
+  terrain:["............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","####FFFF####............","........................","........................",".....G......H......G....","########################","########################","########################","########################"],
+  fixtures:["........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................"],
+  playerSpawn:{c:17,r:11}, gold:[[5,11],[21,11]], guards:[], respawn:[], exits:[[12,0]],
+  solution:'собрать золото на полу; платформа row8 с ложными блоками F — шаг на неё приводит к безопасному падению; лестница c12 к выходу.' },
+{ id:'lvl7', title:'Нижний карман', zone:'Охлаждение', theme:'cool', hint:'Под землёй есть проход с лестницей возврата.',
+  terrain:["............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","........................","################.#######","..................G.....","########################","########################"],
+  fixtures:["........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","................H.......","................H.......","........................","........................"],
+  playerSpawn:{c:2,r:11}, gold:[[5,11],[18,13]], guards:[[22,11]], respawn:[[4,1],[23,1]], exits:[[12,0]],
+  solution:'спуск по шахте c16 (лестница) в нижний коридор row13, собрать слиток (18,13), вернуться и подняться; верхний слиток (5,11); лестница c12 к выходу.' },
+{ id:'lvl8', title:'Каскад', zone:'Охлаждение', theme:'cool', hint:'Копайте ступенями вниз; возврат — по шахте c16.',
+  terrain:["............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","........................","################.#######","################.#######","#####G####G#####.#######","########################"],
+  fixtures:["........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","................H.......","................H.......","................H.......","........................"],
+  playerSpawn:{c:2,r:11}, gold:[[5,14],[10,14]], guards:[[18,11]], respawn:[[4,1],[23,1]], exits:[[12,0]],
+  solution:'копать (c±1,12), упасть в row13, копать (c±1,13), упасть в row14, собрать золото, дойти до шахты c16 и подняться по лестнице; затем к выходу.' },
+{ id:'lvl9', title:'Мост из угроз', zone:'Реактор', theme:'reactor', hint:'Пойманный охранник — временная опора.',
+  terrain:["............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","............H...........","........................","#######.####################","########################","########################","########################"],
+  fixtures:["........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................"],
+  playerSpawn:{c:2,r:11}, gold:[[20,11],[24,11]], guards:[[14,11]], respawn:[[4,1],[23,1]], exits:[[12,0]],
+  trapSupports:[[7,12]],
+  solution:'привести охранника к яме c7 — он в неё упадёт; пройти по его голове; собрать золото справа; лестница c12 к выходу.' },
+{ id:'lvl10', title:'Перекрёсток', zone:'Реактор', theme:'reactor', hint:'Три охранника меняют маршрут — держите дистанцию.',
+  terrain:["......H....H....H.......","......H....H....H.......","......H....H....H.......","......H....H....H.......","......H....H....H.......","......H....H....H.......","......H....H....H.......","......H....H....H.......","......H....H....H.......","......H....H....H.......","......H....H....H.......","........................","########################","########################","########################","########################"],
+  fixtures:["........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................"],
+  playerSpawn:{c:2,r:11}, gold:[[8,11],[18,11],[23,11]], guards:[[13,11],[20,11],[25,11]], respawn:[[4,1],[14,1],[23,1]], exits:[[6,0],[11,0],[16,0]],
+  solution:'собрать золото, лавировать между тремя охранниками, подниматься по средней или дальней лестнице.' },
+{ id:'lvl11', title:'Последняя лестница', zone:'Реактор', theme:'reactor', hint:'Финальная лестница появится после последнего слитка.',
+  terrain:["................?.......","................?.......","................?.......","................?.......","................?.......","................?.......","................?.......","................?.......","................?.......","................?.......","................?.......","........................","########################","########################","########################","########################"],
+  fixtures:["........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................"],
+  playerSpawn:{c:2,r:11}, gold:[[4,11],[9,11],[22,11]], guards:[[15,11],[25,11]], respawn:[[4,1],[23,1]], exits:[[16,0]],
+  solution:'собрать все слитки (скрытая лестница c16 активна только после последнего), подняться по c16 к выходу (16,0).' },
+{ id:'lvl12', title:'Сердце комплекса', zone:'Реактор', theme:'reactor', hint:'Четыре охранника, два яруса. Планируйте порядок сбора.',
+  terrain:["......H.........H.......","......H.........H.......","......H.........H.......","......H.........H.......","......H.........H.......","......H.........H.......","......H.........H.......","......H.........H.......","......H.........H.......","......H.........H.......","......H.........H.......","......H.H.......H...H.......","####.###.####.######.#######","............................","############################","############################"],
+  fixtures:["........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................","........................"],
+  playerSpawn:{c:2,r:11}, gold:[[7,13],[12,13],[17,13],[10,11],[22,11]], guards:[[5,11],[15,11],[20,13],[25,11]], respawn:[[4,1],[14,1],[23,1],[8,1]], exits:[[6,0],[16,0]],
+  solution:'верхний ярус row11 (2 слитка), спуститься через проёмы (4,12)/(13,12) на нижний ярус, собрать 3 слитка, вернуться по лестнице c20, уйти от охранников к лестнице c6 или c16.' },
+];
+
+function parseLevel(def) {
+  const terrain = [], fixtures = [];
+  const tc = {'.':T.AIR,'#':T.BRICK,'M':T.MONOLITH,'F':T.FALSE};
+  const fc = {'.':F.NONE,'H':F.LADDER,'B':F.BAR,'?':F.HLADDER};
+  for (let r = 0; r < CFG.H; r++) {
+    const trow = [], frow = [];
+    let ts = def.terrain[r] || '', fs = def.fixtures[r] || '';
+    if (ts.length < CFG.W) ts = ts.padEnd(CFG.W, /^#+$/.test(ts) ? '#' : '.'); // карты рисовались 24-символьными строками
+    for (let c = 0; c < CFG.W; c++) {
+      trow.push(tc[ts[c]] ?? T.AIR);
+      let fx = fc[fs[c]] ?? F.NONE;
+      if (fx===F.NONE && ts[c]==='H') fx=F.LADDER;   // лестницы нарисованы в terrain-слое
+      if (fx===F.NONE && ts[c]==='?') fx=F.HLADDER;
+      frow.push(fx);
+    }
+    terrain.push(trow); fixtures.push(frow);
+  }
+  // лестница, висящая над полом, достраивается до опоры
+  for (let r = 0; r < CFG.H-1; r++) for (let c = 0; c < CFG.W; c++) {
+    const f = fixtures[r][c];
+    if ((f===F.LADDER||f===F.HLADDER) && fixtures[r+1][c]===F.NONE && terrain[r+1][c]===T.AIR)
+      fixtures[r+1][c] = f;
+  }
+  return {
+    schemaVersion: 1, id: def.id, title: def.title, theme: def.theme || 'mine',
+    width: CFG.W, height: CFG.H, terrain, fixtures,
+    playerSpawn: def.playerSpawn,
+    guards: (def.guards||[]).map((g,i)=>({id:i+1,c:g[0],r:g[1]})),
+    respawnPoints: (def.respawn||[]).map(p=>({c:p[0],r:p[1]})),
+    gold: (def.gold||[]).map((g,i)=>({id:i+1,c:g[0],r:g[1]})),
+    exits: (def.exits||[]).map(e=>({c:e[0],r:e[1]})),
+    trapSupports: def.trapSupports||[],
+    hint: def.hint || '', solution: def.solution || '', zone: def.zone || '',
+  };
+}
+
+function levelToStrings(lv) { // для отладки/экспорта человекочитаемого вида
+  const tc = ['.','#','M','F'], fc = ['.','H','B','?'];
+  return { terrain: lv.terrain.map(row=>row.map(v=>tc[v]).join('')),
+           fixtures: lv.fixtures.map(row=>row.map(v=>fc[v]).join('')) };
+}
+// ============ World: слои, ямы, предикаты ============
+class World {
+  constructor(lv) {
+    this.lv = lv;
+    this.terrain = lv.terrain.map(r=>r.slice());
+    this.fixtures = lv.fixtures.map(r=>r.slice());
+    this.gold = lv.gold.map(g=>({id:g.id,c:g.c,r:g.r,state:'WORLD',carrier:0}));
+    this.holes = new Map(); // key -> {c,r,phase,t}
+    this.hiddenActive = false;
+    this.exitsUnlocked = false;
+    this.initialGold = this.gold.length;
+  }
+  inb(c,r){ return c>=0 && c<CFG.W && r>=0 && r<CFG.H; }
+  key(c,r){ return r*CFG.W+c; }
+  holeAt(c,r){ return this.holes.get(this.key(c,r)); }
+  holeOpen(c,r){ const h=this.holeAt(c,r); return h && h.phase!=='DIGGING'; }
+  solid(c,r){
+    if (!this.inb(c,r)) return true; // внешние границы непроходимы
+    const t = this.terrain[r][c];
+    if (t===T.BRICK || t===T.MONOLITH) return !this.holeOpen(c,r);
+    return false; // воздух и ложный блок не держат и не блокируют
+  }
+  fix(c,r){
+    if (!this.inb(c,r)) return F.NONE;
+    let f = this.fixtures[r][c];
+    if (f===F.HLADDER && this.hiddenActive) f = F.LADDER;
+    return f;
+  }
+  isLadder(c,r){ const f=this.fix(c,r); return f===F.LADDER; }
+  isBar(c,r){ return this.fix(c,r)===F.BAR; }
+  isLadderTop(c,r){ return this.isLadder(c,r) && !this.isLadder(c,r-1); }
+  // опора под клеткой (c, rBelow): твёрдая клетка, верх лестницы или TRAPPED-охранник
+  supportAt(c,rBelow,guards){
+    if (this.solid(c,rBelow)) return true;
+    if (this.isLadderTop(c,rBelow)) return true;
+    for (const g of guards) if (g.state==='TRAPPED' && g.cellC===c && g.cellR===rBelow) return true;
+    return false;
+  }
+  passable(c,r){ return this.inb(c,r) && !this.solid(c,r); }
+  // условия копания: цель (c,r) — закрытый кирпич, сосед на высоте тела свободен
+  canDigTarget(tc,tr,guards){
+    if (!this.inb(tc,tr)) return false;
+    if (this.terrain[tr][tc]!==T.BRICK) return false;
+    if (this.holeAt(tc,tr)) return false;
+    return true;
+  }
+  digSideFree(sc,sr,guards){
+    if (!this.inb(sc,sr)) return false;
+    if (this.terrain[sr][sc]!==T.AIR && !this.holeOpen(sc,sr)) return false;
+    if (this.fix(sc,sr)!==F.NONE) return false;
+    for (const g of guards) if (g.state!=='TRAPPED' && g.state!=='RESPAWNING' && g.cellC===sc && g.cellR===sr) return false;
+    return true;
+  }
+  goldCounts(){
+    let w=0,car=0,col=0;
+    for (const g of this.gold){ if(g.state==='WORLD')w++; else if(g.state==='CARRIED_BY_GUARD')car++; else col++; }
+    return {w,car,col};
+  }
+  goldAt(c,r){ return this.gold.find(g=>g.state==='WORLD'&&g.c===c&&g.r===r); }
+  // детерминированный поиск свободной клетки для выпавшего золота
+  freeGoldCell(c,r,guards){
+    if (this.canPlaceGold(c,r,guards)) return {c,r};
+    const order=[[0,-1],[-1,0],[1,0],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
+    for (const [dc,dr] of order){
+      const nc=c+dc,nr=r+dr;
+      if (this.inb(nc,nr)&&this.canPlaceGold(nc,nr,guards)) return {c:nc,r:nr};
+    }
+    // расширяем поиск
+    for (let rad=2; rad<CFG.W; rad++)
+      for (let dc=-rad; dc<=rad; dc++)
+        for (let dr=-rad; dr<=rad; dr++){
+          const nc=c+dc,nr=r+dr;
+          if (Math.max(Math.abs(dc),Math.abs(dr))!==rad) continue;
+          if (this.inb(nc,nr)&&this.canPlaceGold(nc,nr,guards)) return {c:nc,r:nr};
+        }
+    return {c,r};
+  }
+  canPlaceGold(c,r,guards){
+    if (this.terrain[r][c]===T.MONOLITH) return false;
+    if (this.terrain[r][c]===T.BRICK && !this.holeOpen(c,r)) return false;
+    return true;
+  }
+}
+
+// ============ Валидатор уровней ============
+function validateLevel(lv){
+  const errs=[];
+  if (lv.terrain.length!==CFG.H||lv.fixtures.length!==CFG.H) errs.push('Размер карты не 16 строк');
+  for (let r=0;r<CFG.H;r++){
+    if (lv.terrain[r].length!==CFG.W) errs.push('Строка '+r+' не 28 столбцов');
+    for (let c=0;c<CFG.W;c++){
+      const t=lv.terrain[r][c], f=lv.fixtures[r][c];
+      if (![T.AIR,T.BRICK,T.MONOLITH,T.FALSE].includes(t)) errs.push('Недопустимый грунт в ('+c+','+r+')');
+      if (![F.NONE,F.LADDER,F.BAR,F.HLADDER].includes(f)) errs.push('Недопустимый объект в ('+c+','+r+')');
+      if ((f===F.LADDER||f===F.BAR||f===F.HLADDER) && t!==T.AIR) errs.push('Лестница/перекладина внутри грунта ('+c+','+r+')');
+    }
+  }
+  if (!lv.exits.length) errs.push('Нет выходов');
+  for (const e of lv.exits) if (e.r!==0) errs.push('Выход ('+e.c+','+e.r+') не у верхней границы');
+  const ids=new Set();
+  for (const g of lv.gold){ if(ids.has(g.id))errs.push('Повторный ID золота '+g.id); ids.add(g.id);
+    if (lv.terrain[g.r][g.c]===T.MONOLITH||(lv.terrain[g.r][g.c]===T.BRICK)) errs.push('Золото в твёрдом блоке ('+g.c+','+g.r+')'); }
+  if (lv.gold.length>100) errs.push('Больше 100 слитков');
+  if (lv.guards.length>6) errs.push('Больше 6 охранников');
+  for (const g of lv.guards) if (lv.terrain[g.r][g.c]!==T.AIR) errs.push('Охранник в блоке ('+g.c+','+g.r+')');
+  const ps=lv.playerSpawn;
+  if (!ps||lv.terrain[ps.r][ps.c]!==T.AIR) errs.push('Старт игрока в блоке');
+  for (const p of lv.respawnPoints) if (lv.terrain[p.r][p.c]!==T.AIR) errs.push('Точка восстановления в блоке ('+p.c+','+p.r+')');
+  // достижимость (статический flood fill с лестницами и падением; скрытые лестницы считаем активными)
+  if (!errs.length){
+    const w=new World(lv); w.hiddenActive=true;
+    const seen=new Set(); const q=[[ps.c,ps.r]];
+    const trapSup=new Set((lv.trapSupports||[]).map(p=>w.key(p[0],p[1])));
+    const sup=(c,rb)=>rb<CFG.H && (w.supportAt(c,rb,[])||trapSup.has(w.key(c,rb))); // нижняя граница — не опора
+    const cellMode=(c,r)=>{ // чем занят актор в клетке
+      if (w.isLadder(c,r)) return 'ladder';
+      if (sup(c,r+1)) return 'stand';
+      if (w.isBar(c,r-1)) return 'hang'; // вис под перекладиной клетки выше
+      return 'air';
+    };
+    const push=(c,r)=>{ if(w.inb(c,r)&&w.passable(c,r)){const k=w.key(c,r); if(!seen.has(k)){seen.add(k);q.push([c,r]);}} };
+    const dug=new Set();
+    const pushDig=(c,r)=>{ if(w.inb(c,r)){const k=w.key(c,r); if(!seen.has(k)){seen.add(k);dug.add(k);q.push([c,r]);}} }; // выкопанная клетка
+    push(ps.c,ps.r);
+    while(q.length){
+      const [c,r]=q.shift();
+      const cm=cellMode(c,r);
+      const fallTo=(fc,fr)=>{ let nr=fr;
+        while(w.inb(fc,nr)&&w.passable(fc,nr)&&!sup(fc,nr+1)&&!w.isBar(fc,nr-1)) nr++;
+        if (w.inb(fc,nr)&&w.passable(fc,nr)) push(fc,nr); };
+      if (cm!=='ladder' || sup(c,r+1)) for (const dc of [-1,1]){ // с середины лестницы вбок не сойти
+        const nc=c+dc;
+        if (cm==='hang' && !w.isBar(nc,r-1)){ // край перекладины: сход на лестницу/опору в соседней колонке
+          if (w.passable(nc,r)){
+            if (sup(nc,r+1)) push(nc,r);
+            else if (w.isLadder(nc,r)) push(nc,r);
+            else if (w.isLadder(nc,r+1)) push(nc,r+1);
+            else if (w.isLadder(nc,r+2)) push(nc,r+2);
+            else if (sup(nc,r+2)) push(nc,r+1);
+          }
+          continue;
+        }
+        if (!w.passable(nc,r)) continue;
+        if (cellMode(nc,r)!=='air') push(nc,r);
+        else fallTo(nc,r); // шаг в пропасть — с перехватом перекладины
+      }
+      for (const dr of [-1,1]){ // лестница
+        if (w.isLadder(c,r)&&w.isLadder(c,r+dr)) push(c,r+dr);
+      }
+      if (w.isLadderTop(c,r)) push(c,r-1); // выход с верхней ступени
+      if (cellMode(c,r)==='stand' && w.isLadder(c,r+1)) push(c,r+1); // спуск на лестницу сверху
+      // падение вниз (с лестницы — только с нижней ступени)
+      if (!sup(c,r+1) && !(w.isLadder(c,r)&&w.isLadder(c,r+1))){
+        let nr=r+1;
+        while(w.inb(c,nr)&&w.passable(c,nr)&&!sup(c,nr+1)&&!w.isBar(c,nr-1)) nr++;
+        if (w.inb(c,nr)&&w.passable(c,nr)) push(c,nr);
+      }
+      // спуск с перекладины
+      if (w.isBar(c,r-1)) push(c,r);
+      // диагональная копка вниз
+      if (cellMode(c,r)!=='air') for (const dc of [-1,1]){
+        const tc=c+dc,tr=r+1;
+        if (w.inb(tc,tr)&&w.terrain[tr][tc]===T.BRICK&&(w.passable(tc,r)||dug.has(w.key(tc,r)))){ push(tc,r); pushDig(tc,tr); }
+      }
+    }
+    for (const g of lv.gold) if (!seen.has(w.key(g.c,g.r))) errs.push('Золото ('+g.c+','+g.r+') недостижимо');
+    let exitOk=false;
+    for (const e of lv.exits) if (seen.has(w.key(e.c,e.r))||seen.has(w.key(e.c,e.r+1))) exitOk=true;
+    if (!exitOk) errs.push('Выход недостижим даже после активации лестниц');
+    if (lv.guards.length) for (const p of lv.respawnPoints) if (!seen.has(w.key(p.c,p.r))) { /* точка вне досягаемости игрока допустима */ }
+  }
+  return errs;
+}
+// ============ Игрок ============
+const EPS=1e-6;
+class Player {
+  constructor(sp){ this.x=sp.c+0.5; this.y=sp.r+1-CFG.HH; this.mode='walk'; this.dir=1;
+    this.dig=null; this.barR=-1; this.barImmune=null; this.holeImmune=null;
+    this.standGuard=null; this.deathT=0; this.stepPhase=0; }
+  cellC(){ return Math.floor(this.x); }
+  cellR(){ return Math.floor(this.y); }
+  feet(){ return this.y+CFG.HH; }
+  grounded(w,guards){
+    const rb=Math.floor(this.feet()+EPS);
+    if (w.supportAt(this.cellC(),rb,guards)) return true;
+    for (const g of guards){
+      if (g.state==='CHASE'||g.state==='FALL'||g.state==='CLIMB_OUT'){
+        if (g.cellC===this.cellC() && g.cellR===rb && this.feet()<=g.y-CFG.HH+0.06) return true; // стойка на голове активного
+      }
+    }
+    return false;
+  }
+  bodyRows(){ return [Math.floor(this.y-CFG.HH+EPS), Math.floor(this.y+CFG.HH-EPS)]; }
+  hCollide(w,newX){ // возврат разрешённого x (западный/восточный край экрана — не стена: проход круговой)
+    const [r0,r1]=this.bodyRows();
+    if (this.dir>0){ const c=Math.floor(newX+CFG.HW-EPS);
+      for(let r=r0;r<=r1;r++) if(w.inb(c,r)&&w.solid(c,r)) return c-CFG.HW;
+    } else { const c=Math.floor(newX-CFG.HW+EPS);
+      for(let r=r0;r<=r1;r++) if(w.inb(c,r)&&w.solid(c,r)) return c+1+CFG.HW;
+    }
+    return newX;
+  }
+  bodyFree(w,x){ // тело с центром x не пересекает кирпич (полутело за краем экрана — нормально)
+    const [r0,r1]=this.bodyRows(); const c0=Math.floor(x-CFG.HW+EPS), c1=Math.floor(x+CFG.HW-EPS);
+    for(let c=c0;c<=c1;c++) for(let r=r0;r<=r1;r++) if(w.inb(c,r)&&w.solid(c,r)) return false;
+    return true;
+  }
+  update(w,guards,input,game,dt){
+    if (this.mode==='dead'){ this.deathT+=dt; return; }
+    if (input.dir) this.dir=input.dir;
+    if (this.mode==='dig'){
+      this.dig.t+=dt;
+      if (!this.grounded(w,guards)){ w.holes.delete(w.key(this.dig.tc,this.dig.tr)); this.dig=null; this.mode='fall'; return; }
+      if (this.dig.t>=CFG.DIG_TIME){
+        const h=w.holes.get(w.key(this.dig.tc,this.dig.tr));
+        if (h){ h.phase='OPEN'; h.t=0; game.emit('holeOpened',this.dig.tc,this.dig.tr); }
+        this.dig=null; this.mode='walk';
+      }
+      return;
+    }
+    if (this.barImmune){ this.barImmune.t-=dt; if(this.barImmune.t<=0) this.barImmune=null; }
+    if (this.holeImmune){ this.holeImmune.t-=dt; if(this.holeImmune.t<=0) this.holeImmune=null; }
+    if (this.mode!=='fall') this.jumpDir=0;
+    // команда копания (фронт нажатия, буфер)
+    if (input.digSide && (this.mode==='walk'||this.mode==='ladder'||this.mode==='bar')){
+      const side=input.digSide===2?this.dir:input.digSide, cc=this.cellC(), cr=this.cellR();
+      if (Math.abs(this.x-(cc+0.5))<=0.3){
+        let tc=cc+side, tr=cr+1;
+        // если по диагонали вниз нет кирпича — копаем вбок на уровне тела (выход из тупиковых ям)
+        if (!(w.canDigTarget(tc,tr,guards) && w.digSideFree(cc+side,cr,guards)) && w.canDigTarget(cc+side,cr,guards)){ tc=cc+side; tr=cr; }
+        if (w.canDigTarget(tc,tr,guards) && (tr===cr || w.digSideFree(cc+side,cr,guards))){
+          w.holes.set(w.key(tc,tr),{c:tc,r:tr,phase:'DIGGING',t:0});
+          this.dig={side,t:0,tc,tr}; this.mode='dig'; game.emit('digStarted',tc,tr,side);
+          return;
+        }
+      }
+    }
+    const prevY=this.y;
+    if (this.mode==='walk'){
+      if (input.dir){ const nx=this.hCollide(w,this.x+input.dir*CFG.RUN*dt); this.x=nx; }
+      // вход на лестницу
+      const cc=this.cellC();
+      if (input.up && w.isLadder(cc,this.cellR()) && Math.abs(this.x-(cc+0.5))<=CFG.LADDER_TOL+0.1){ this.mode='ladder'; }
+      else if (input.down){ const rb=Math.floor(this.feet()+EPS);
+        if (w.isLadder(cc,rb) && Math.abs(this.x-(cc+0.5))<=CFG.LADDER_TOL+0.1){ this.mode='ladder'; this.y=rb+0.5; } }
+      // перекладина надо мной при ходьбе — не хватаем (только из падения)
+      if (this.mode==='walk' && !this.grounded(w,guards)){
+        if (w.isBar(this.cellC(),this.cellR()-1)){ this.barR=this.cellR()-1; this.y=this.barR+1+CFG.HH; this.mode='bar'; }
+        else this.mode='fall';
+      }
+      // перенос стоящим на активном охраннике
+      if (this.standGuard && this.standGuard.state!=='TRAPPED'){ this.x+=this.standGuard.dx; this.hCollide(w,this.x); }
+      // круговой проход через края экрана: за правым краем появляемся у левого и наоборот
+      if (this.x>CFG.W){ const wx=this.x-CFG.W; this.x=this.bodyFree(w,wx)?wx:CFG.W-0.01; }
+      else if (this.x<0){ const wx=this.x+CFG.W; this.x=this.bodyFree(w,wx)?wx:0.01; }
+      this.stepPhase += input.dir? CFG.RUN*dt*2 : 0;
+    }
+    else if (this.mode==='ladder'){
+      const cc=this.cellC(), center=cc+0.5;
+      this.x += Math.max(-CFG.LADDER*dt, Math.min(CFG.LADDER*dt, center-this.x));
+      let vy=0; if(input.up)vy=-CFG.LADDER; else if(input.down)vy=CFG.LADDER;
+      this.y += vy*dt;
+      let topR=this.cellR(); while(w.isLadder(cc,topR-1)) topR--;
+      let botR=this.cellR(); while(w.isLadder(cc,botR+1)) botR++;
+      if (this.y-CFG.HH < topR){
+        if (input.up && w.passable(cc,topR-1)){ this.y=topR-CFG.HH; this.mode='walk'; }
+        else this.y=topR+CFG.HH;
+      }
+      if (this.y+CFG.HH > botR+1){
+        if (w.supportAt(cc,botR+1,guards)){ this.y=botR+1-CFG.HH; this.mode='walk'; }
+        else this.y=botR+1-CFG.HH;
+      }
+      if (input.dir && !input.up && !input.down){ // спрыг с лестницы (без вверх/вниз): падаем со сносом в сторону
+        this.jumpDir=input.dir; this.mode='fall'; return;
+      }
+      this.stepPhase += vy? Math.abs(vy)*dt*2 : 0;
+    }
+    else if (this.mode==='bar'){
+      if (input.down){ this.barImmune={c:this.cellC(),r:this.barR,t:CFG.BAR_RELEASE}; this.mode='fall'; return; }
+      if (input.up && w.isLadder(this.cellC(),this.cellR())){ this.mode='ladder'; return; }
+      if (input.dir){
+        const nc=this.cellC()+input.dir;
+        if (w.isLadder(nc,this.cellR())){
+          this.x+=input.dir*CFG.BAR*dt;
+          if (Math.abs(this.x-(nc+0.5))<0.3){ this.x=nc+0.5; this.mode='ladder'; }
+        } else {
+          let nx=this.x+input.dir*CFG.BAR*dt;
+          let edge=false;
+          if (input.dir>0){ const c=Math.floor(nx+CFG.HW-EPS); if(!w.isBar(c,this.barR)){ nx=c-CFG.HW; edge=true; } }
+          else { const c=Math.floor(nx-CFG.HW+EPS); if(!w.isBar(c,this.barR)){ nx=c+1+CFG.HW; edge=true; } }
+          this.x=nx;
+          // край перекладины: если впереди лестница или опора — слазим и наступаем на неё
+          if (edge && w.passable(nc,this.cellR())){
+            const lad = w.isLadder(nc,this.cellR())||w.isLadder(nc,this.cellR()+1)||w.isLadder(nc,this.cellR()+2);
+            const surf = w.supportAt(nc,this.cellR()+1,guards)||w.supportAt(nc,this.cellR()+2,guards);
+            if (lad||surf){
+              this.x=nc+0.5; this.barImmune={c:nc,r:this.barR,t:CFG.BAR_RELEASE};
+              // на клетку лестницы — сразу в режим лестницы; иначе становимся (верх лестницы = опора),
+              // а если опоры под ногами нет — walk сам перейдёт в fall и приземлится ниже
+              this.mode = w.isLadder(nc,this.cellR())?'ladder':'walk';
+            }
+          }
+        }
+      }
+      this.y=this.barR+1+CFG.HH;
+      this.stepPhase += input.dir? CFG.BAR*dt*2 : 0;
+    }
+    else if (this.mode==='fall'){
+      this.y += CFG.FALL*dt;
+      if (this.jumpDir){
+        this.x=this.hCollide(w,this.x+this.jumpDir*CFG.RUN*dt); // снос после спрыга с лестницы
+        if (this.x>CFG.W){ const wx=this.x-CFG.W; this.x=this.bodyFree(w,wx)?wx:CFG.W-0.01; }
+        else if (this.x<0){ const wx=this.x+CFG.W; this.x=this.bodyFree(w,wx)?wx:0.01; }
+      }
+      // перехват перекладины при пересечении её нижней линии
+      const line0=prevY-CFG.HH, line1=this.y-CFG.HH;
+      const c0=Math.floor(this.x-CFG.HW), c1=Math.floor(this.x+CFG.HW);
+      for (let c=c0;c<=c1;c++){
+        const r0=Math.floor(line0), r1=Math.floor(line1);
+        for (let r=r0;r<=r1;r++){
+          if (w.isBar(c,r)){
+            const line=r+1;
+            if (line0 < line-EPS && line1 >= line-EPS && Math.abs(this.x-(c+0.5))<=CFG.LADDER_TOL){
+              if (!(this.barImmune && this.barImmune.r===r)){ this.y=line+CFG.HH; this.barR=r; this.mode='bar'; return; }
+            }
+          }
+        }
+      }
+      // остановка падения на лестнице
+      if ((input.up||input.down)){
+        const cc=this.cellC();
+        if (w.isLadder(cc,this.cellR()) && Math.abs(this.x-(cc+0.5))<=CFG.LADDER_TOL){ this.mode='ladder'; return; }
+      }
+      // приземление (нижняя граница уровня — НЕ опора: у шахты без дна дна нет)
+      const f0=prevY+CFG.HH, f1=this.y+CFG.HH;
+      for (let r=Math.floor(f0); r<=Math.floor(f1+EPS) && r<CFG.H; r++){
+        if (this.groundedAt(w,guards,r)){ this.y=r-CFG.HH; this.mode='walk'; game.emit('landed',this.x,this.y); break; }
+      }
+      if (this.mode==='fall' && this.y+CFG.HH >= CFG.H){ game.killPlayer(); return; }
+      if (this.y>CFG.H+1) this.mode='walk'; // страховка от вылета
+    }
+  }
+  groundedAt(w,guards,r){
+    if (w.supportAt(this.cellC(),r,guards)) return true;
+    for (const g of guards)
+      if ((g.state==='CHASE'||g.state==='CLIMB_OUT') && g.cellC===this.cellC() && g.cellR===r) return true;
+    return false;
+  }
+}
+// ============ Навигация: ориентированный граф разрешённых перемещений ============
+class Navigation {
+  constructor(world){ this.w=world; this.version=0; this.adj=new Map(); this.built=-1; }
+  bump(){ this.version++; }
+  stance(c,r){
+    const w=this.w;
+    if (!w.passable(c,r)) return 'air';
+    if (w.isLadder(c,r)) return 'ladder';
+    if (r+1<CFG.H && w.supportAt(c,r+1,[])) return 'stand'; // нижняя граница уровня — НЕ опора (шахта без дна)
+    if (w.isBar(c,r-1)) return 'hang';
+    if (w.holeOpen(c,r+1)) return 'stand'; // яма под клеткой: охранник шагает в неё, физика провалит и загонит в TRAPPED
+    return 'air';
+  }
+  fallLanding(c,r,ignoreBarR=-1){
+    const w=this.w; let nr=r;
+    while (w.inb(c,nr) && w.passable(c,nr) && !(nr+1<CFG.H && w.supportAt(c,nr+1,[]))){
+      if (w.isBar(c,nr-1) && nr-1!==ignoreBarR) break; // падение перехватывается перекладиной
+      nr++;
+    }
+    if (!w.inb(c,nr) || !w.passable(c,nr)) return -1;
+    return nr;
+  }
+  build(){
+    if (this.built===this.version) return;
+    this.built=this.version;
+    this.adj.clear();
+    const w=this.w, sp=1; // стоимости пересчитываются при поиске через speed
+    for (let r=0;r<CFG.H;r++) for (let c=0;c<CFG.W;c++){
+      const st=this.stance(c,r);
+      if (st==='air') continue;
+      const edges=[];
+      if (!(st==='ladder' && !w.supportAt(c,r+1,[]))) for (const dc of [-1,1]){ // с середины лестницы вбок не сойти (залипание к центру)
+        const nc=c+dc;
+        if (!w.passable(nc,r)) {
+          continue;
+        }
+        if (st==='hang' && !w.isBar(nc,r-1)){ // край перекладины: сход на лестницу/опору (как в физике игрока)
+          if (w.passable(nc,r)){
+            if (w.supportAt(nc,r+1,[])) edges.push([nc,r,1.5]);       // наступаем на опору/верх лестницы
+            else if (w.isLadder(nc,r)) edges.push([nc,r,1.5]);        // прямо на лестницу
+            else if (w.isLadder(nc,r+1)) edges.push([nc,r+1,1.5]);
+            else if (w.isLadder(nc,r+2)) edges.push([nc,r+2,1.5]);
+            else if (w.inb(nc,r+2) && w.supportAt(nc,r+2,[])) edges.push([nc,r+1,1.5]);
+          }
+          continue;
+        }
+        const nst=this.stance(nc,r);
+        if (nst!=='air') edges.push([nc,r,1]);           // стоимость в клетках/сек
+        else { const rl=this.fallLanding(nc,r); if (rl>=0) edges.push([nc,rl,1+(rl-r)*CFG.RUN/CFG.FALL]); }
+      }
+      if (w.isLadder(c,r)){
+        for (const dr of [-1,1]) if (w.isLadder(c,r+dr)) edges.push([c,r+dr,1]);
+        if (w.isLadderTop(c,r) && w.passable(c,r-1)) edges.push([c,r-1,1]); // выход с верхней ступени
+      }
+      if (st==='stand' && w.isLadder(c,r+1)) edges.push([c,r+1,1]); // спуск на лестницу сверху
+      if (st==='hang' || (st==='ladder' && !w.supportAt(c,r+1,[]) && !w.isLadder(c,r+1))){
+        const rl=this.fallLanding(c,r, st==='hang'? r-1 : -1); // при спуске с перекладины её не хватаем повторно
+        if (rl>=0) edges.push([c,rl,(rl-r)*CFG.RUN/CFG.FALL]);
+      }
+      this.adj.set(w.key(c,r),edges);
+    }
+  }
+  // Дейкстра от start к goal; возвращает массив клеток [c,r] или null
+  path(startC,startR,goalC,goalR,occupancy){
+    this.build();
+    const w=this.w, N=CFG.W*CFG.H;
+    const dist=new Float64Array(N).fill(Infinity), prev=new Int32Array(N).fill(-1);
+    const s=w.key(startC,startR), g=w.key(goalC,goalR);
+    if (!this.adj.has(s)||!this.adj.has(g)) return null;
+    dist[s]=0;
+    const visited=new Uint8Array(N), pq=[s];
+    while (pq.length){
+      let bi=0; for(let i=1;i<pq.length;i++) if(dist[pq[i]]<dist[pq[bi]]) bi=i;
+      const u=pq.splice(bi,1)[0];
+      if (visited[u]) continue; visited[u]=1;
+      if (u===g) break;
+      for (const [nc,nr,cost] of (this.adj.get(u)||[])){
+        const v=w.key(nc,nr);
+        if (visited[v]||!this.adj.has(v)) continue;
+        let cc=cost;
+        const occ=occupancy.get(v); if (occ) cc+=0.5; // занятая клетка — дороже
+        if (dist[u]+cc<dist[v]){ dist[v]=dist[u]+cc; prev[v]=u; pq.push(v); }
+      }
+    }
+    if (dist[g]===Infinity) return null;
+    const out=[]; let cur=g;
+    while (cur!==-1 && cur!==s){ out.push([cur%CFG.W, Math.floor(cur/CFG.W)]); cur=prev[cur]; }
+    out.reverse();
+    return out;
+  }
+  // лучшая достижимая клетка по расстоянию до цели (если пути нет)
+  bestReachable(startC,startR,goalC,goalR,occupancy){
+    this.build();
+    const w=this.w, N=CFG.W*CFG.H;
+    const dist=new Float64Array(N).fill(Infinity), prev=new Int32Array(N).fill(-1);
+    const s=w.key(startC,startR);
+    if (!this.adj.has(s)) return null;
+    dist[s]=0; const visited=new Uint8Array(N), pq=[s];
+    while (pq.length){
+      let bi=0; for(let i=1;i<pq.length;i++) if(dist[pq[i]]<dist[pq[bi]]) bi=i;
+      const u=pq.splice(bi,1)[0]; if(visited[u])continue; visited[u]=1;
+      for (const [nc,nr,cost] of (this.adj.get(u)||[])){
+        const v=w.key(nc,nr); if(visited[v]||!this.adj.has(v))continue;
+        if (dist[u]+cost<dist[v]){ dist[v]=dist[u]+cost; prev[v]=u; pq.push(v); }
+      }
+    }
+    let best=-1, bd=Infinity;
+    for (let i=0;i<N;i++) if (visited[i]){
+      const c=i%CFG.W, r=Math.floor(i/CFG.W);
+      const d=Math.abs(c-goalC)+Math.abs(r-goalR);
+      if (d<bd){ bd=d; best=i; }
+    }
+    if (best<0) return null;
+    const out=[]; let cur=best;
+    while (cur!==-1 && cur!==s){ out.push([cur%CFG.W,Math.floor(cur/CFG.W)]); cur=prev[cur]; }
+    out.reverse();
+    return out;
+  }
+}
+
+// ============ Охранники ============
+class Guard {
+  constructor(def,speed,trapTime){
+    this.id=def.id; this.spawnDef=def;
+    this.x=def.c+0.5; this.y=def.r+1-CFG.HH;
+    this.cellC=def.c; this.cellR=def.r;
+    this.state='CHASE'; this.speed=speed; this.trapTime=trapTime;
+    this.path=null; this.pathT=Math.random()*0.2; this.nextCell=null; this.waitT=0;
+    this.trapT=0; this.climbT=0; this.respawnT=0; this.carryGold=0;
+    this.holeImmune=null; this.dx=0; this.stepPhase=Math.random()*6;
+  }
+  reset(def){ this.x=def.c+0.5; this.y=def.r+1-CFG.HH; this.cellC=def.c; this.cellR=def.r;
+    this.state='CHASE'; this.path=null; this.carryGold=0; this.trapT=0; this.waitT=0; this.holeImmune=null; }
+  targetY(c,r,w){
+    if (w.isLadder(c,r)) return r+0.5;
+    if (w.isBar(c,r-1) && !w.supportAt(c,r+1,[])) return r+1+CFG.HH;
+    return r+1-CFG.HH;
+  }
+  update(w,nav,player,game,dt,occupancy){
+    if (this.holeImmune){ this.holeImmune.t-=dt; if(this.holeImmune.t<=0) this.holeImmune=null; }
+    this.dx=0;
+    if (this.state==='RESPAWNING'){
+      this.respawnT-=dt;
+      if (this.respawnT<=0){
+        const p=this.pickRespawn(w,player,game);
+        if (p){ this.x=p.c+0.5; this.y=p.r+1-CFG.HH; this.cellC=p.c; this.cellR=p.r;
+          this.state='ASSEMBLE'; this.respawnT=CFG.RESPAWN_ASSEMBLE; game.emit('respawnStart',this.x,this.y); }
+        else this.respawnT=CFG.RESPAWN_RETRY;
+      }
+      return;
+    }
+    if (this.state==='ASSEMBLE'){
+      this.respawnT-=dt;
+      if (this.respawnT<=0){ this.state='CHASE'; game.emit('respawnDone',this.cellC,this.cellR); }
+      return;
+    }
+    if (this.state==='TRAPPED'){
+      this.trapT+=dt;
+      if (this.trapT>=this.trapTime){
+        const uc=this.cellC, ur=this.cellR-1;
+        const free = w.passable(uc,ur) && !game.cellOccupied(uc,ur,this) && !(player.cellC()===uc&&player.cellR()===ur);
+        if (free){ this.state='CLIMB_OUT'; this.climbT=0; }
+        else this.trapT=this.trapTime-0.1; // повторная проверка
+      }
+      return;
+    }
+    if (this.state==='CLIMB_OUT'){
+      this.climbT+=dt;
+      const ty=this.cellR-1+1-CFG.HH;
+      this.y += (ty-this.y)*Math.min(1,dt*12);
+      if (this.climbT>=CFG.CLIMB_OUT){
+        this.y=ty; this.cellR-=1;
+        // шаг в доступную боковую клетку
+        for (const dc of [-1,1]){
+          const nc=this.cellC+dc;
+          if (w.passable(nc,this.cellR) && nav.stance(nc,this.cellR)!=='air' && !game.cellOccupied(nc,this.cellR,this)){
+            this.cellC=nc; this.x=nc+0.5; break;
+          }
+        }
+        this.state='CHASE'; this.path=null;
+        game.emit('guardFreed',this.cellC,this.cellR);
+      }
+      return;
+    }
+    if (this.state==='FALL'){
+      const prevY=this.y;
+      this.y += CFG.FALL*dt;
+      const f0=prevY+CFG.HH, f1=this.y+CFG.HH;
+      for (let r=Math.floor(f0); r<=Math.floor(f1+EPS); r++){
+        if (w.supportAt(this.cellC,r,[this])){
+          this.y=r-CFG.HH; this.cellR=r-1;
+          if (w.holeOpen(this.cellC,r-1) && !(this.holeImmune && this.holeImmune.key===w.key(this.cellC,r-1))){
+            this.state='TRAPPED'; this.trapT=0; this.path=null;
+            game.guardTrapped(this);
+          } else this.state='CHASE';
+          break;
+        }
+      }
+      return;
+    }
+    // CHASE
+    if (!w.supportAt(this.cellC,this.cellR+1,[this]) && !w.isLadder(this.cellC,this.cellR) && !w.isBar(this.cellC,this.cellR-1)){
+      this.state='FALL'; this.path=null; return;
+    }
+    this.pathT-=dt;
+    if (!this.path || this.pathT<=0){
+      this.pathT=CFG.NAV_RECOMPUTE[0]+ (this.id%7)*0.015;
+      const goal = player.mode==='fall' ? this.predictPlayerLanding(w,player) : [player.cellC(),player.cellR()];
+      let p=nav.path(this.cellC,this.cellR,goal[0],goal[1],occupancy);
+      if (!p) p=nav.bestReachable(this.cellC,this.cellR,goal[0],goal[1],occupancy);
+      this.path=p||[];
+    }
+    if (!this.path.length){ this.waitT+=dt; return; }
+    const [nc,nr]=this.path[0];
+    // резервирование: не входить в клетку, где охранник стоит (если он не уходит)
+    // или уже движется другой; встречный обмен клетками разрешён
+    const nk=w.key(nc,nr);
+    const other=occupancy.get(nk);
+    if (other && other!==this.id){
+      const og=game.guards.find(x=>x.id===other);
+      const atNk=og && og.cellC===nc && og.cellR===nr;
+      const coming=og && og.nextCell && og.nextCell[0]===nc && og.nextCell[1]===nr && !atNk;
+      const leaving=atNk && og.nextCell && (og.nextCell[0]!==nc||og.nextCell[1]!==nr);
+      if (coming || (atNk && !leaving)){ this.waitT+=dt; return; }
+    }
+    occupancy.set(nk,this.id);
+    this.nextCell=[nc,nr];
+    const tx=nc+0.5, ty=this.targetY(nc,nr,w);
+    const dx=tx-this.x, dy=ty-this.y;
+    const horiz=Math.abs(dx)>0.02, vert=Math.abs(dy)>0.04;
+    const sp=this.speed*dt;
+    if (horiz){ const mv=Math.max(-sp,Math.min(sp,dx)); this.x+=mv; this.dx=mv; }
+    if (vert){ this.y+=Math.max(-sp,Math.min(sp,dy)); }
+    this.stepPhase+=this.speed*dt*2;
+    if (!horiz && !vert){
+      this.x=tx; this.y=ty; this.cellC=nc; this.cellR=nr;
+      this.path.shift(); this.waitT=0;
+      const g=w.goldAt(nc,nr);
+      if (g && !this.carryGold){ g.state='CARRIED_BY_GUARD'; g.carrier=this.id; this.carryGold=g.id; game.emit('goldTaken',nc,nr); }
+    }
+  }
+  predictPlayerLanding(w,player){
+    let r=player.cellR()+1;
+    while (w.inb(player.cellC(),r) && w.passable(player.cellC(),r) && !w.supportAt(player.cellC(),r+1,[])) r++;
+    return [player.cellC(), Math.min(r,CFG.H-1)];
+  }
+  pickRespawn(w,player,game){
+    for (const p of w.lv.respawnPoints){
+      if (!w.passable(p.c,p.r)) continue;
+      if (Math.max(Math.abs(p.c-player.cellC()),Math.abs(p.r-player.cellR()))<3) continue;
+      let free=true;
+      for (const g of w.lv.guards) if (g.id!==this.id){
+        const gg=game.guards.find(q=>q.id===g.id);
+        if (gg && (gg.state==='CHASE'||gg.state==='FALL') && gg.cellC===p.c && gg.cellR===p.r) free=false;
+      }
+      if (free) return p;
+    }
+    return null;
+  }
+}
+// ============ Game: состояния, тик, счёт, кампания ============
+class Game {
+  constructor(){
+    this.state='MENU'; // MENU..PLAYING,PAUSED,DYING,LEVEL_COMPLETE,GAME_OVER,CAMPAIGN_COMPLETE,EDITOR_TEST
+    this.mode='campaign'; this.difficulty='normal';
+    this.levelIndex=0; this.lives=CFG.LIVES_START; this.score=0; this.attemptStartScore=0;
+    this.trapAwarded=new Set(); this.killAwarded=new Set();
+    this.events=[]; this.occupancy=new Map();
+  }
+  emit(ev,a,b,c){ this.events.push({ev,a,b,c}); }
+  drainEvents(){ const e=this.events; this.events=[]; return e; }
+
+  startLevel(lv, mode, difficulty){
+    this.mode=mode; this.difficulty=difficulty||this.difficulty;
+    this.lv=lv; this.world=new World(lv);
+    this.nav=new Navigation(this.world);
+    const D=CFG.DIFF[this.difficulty];
+    this.player=new Player(lv.playerSpawn);
+    this.guards=lv.guards.map(g=>new Guard(g,D.guardSpeed,D.trapTime));
+    this.trapAwarded=new Set(); this.killAwarded=new Set();
+    this.attemptStartScore=this.score;
+    this.time=0; this.events=[]; this.occupancy=new Map();
+    this.shakeT=0;
+    this.state='PLAYING';
+  }
+  restartAttempt(){ // смерть/ручной рестарт: карта заново, счёт к началу попытки
+    this.score=this.attemptStartScore;
+    const lv=this.lv;
+    this.world=new World(lv); this.nav=new Navigation(this.world);
+    this.player=new Player(lv.playerSpawn);
+    const D=CFG.DIFF[this.difficulty];
+    this.guards=lv.guards.map(g=>new Guard(g,D.guardSpeed,D.trapTime));
+    this.trapAwarded=new Set(); this.killAwarded=new Set();
+    this.time=0; this.events=[]; this.occupancy=new Map();
+    this.state='PLAYING';
+  }
+
+  cellOccupied(c,r,except){
+    for (const g of this.guards) if (g!==except && (g.state==='CHASE'||g.state==='FALL'||g.state==='CLIMB_OUT') && g.cellC===c && g.cellR===r) return true;
+    if (this.player.cellC()===c && this.player.cellR()===r && this.player.mode!=='dead') return true;
+    return false;
+  }
+
+  guardTrapped(g){
+    this.nav.bump();
+    if (g.carryGold){
+      const gid=g.carryGold; g.carryGold=0;
+      const item=this.world.gold.find(x=>x.id===gid);
+      if (item){
+        const pos=this.world.freeGoldCell(g.cellC,g.cellR-1,this.guards);
+        item.state='WORLD'; item.carrier=0; item.c=pos.c; item.r=pos.r; item.dropT=0.5;
+        this.emit('goldDropped',pos.c,pos.r);
+      }
+    }
+    if (!this.trapAwarded.has(g.id)){ this.trapAwarded.add(g.id); this.score+=CFG.SCORE_TRAP; }
+    this.emit('guardTrapped',g.cellC,g.cellR);
+  }
+  killGuard(g){ // погребение
+    if (g.carryGold){
+      const gid=g.carryGold; g.carryGold=0;
+      const item=this.world.gold.find(x=>x.id===gid);
+      if (item){ const pos=this.world.freeGoldCell(g.cellC,g.cellR,this.guards);
+        item.state='WORLD'; item.carrier=0; item.c=pos.c; item.r=pos.r; item.dropT=0.5; }
+    }
+    if (!this.killAwarded.has(g.id)){ this.killAwarded.add(g.id); this.score+=CFG.SCORE_KILL; }
+    g.state='RESPAWNING'; g.respawnT=CFG.RESPAWN_DELAY; g.path=null;
+    this.emit('guardKilled',g.x,g.y);
+  }
+
+  killPlayer(){
+    if (this.player.mode==='dead') return;
+    this.player.mode='dead'; this.player.deathT=0;
+    this.state='DYING'; this.shakeT=0.12;
+    this.emit('playerDied',this.player.x,this.player.y);
+  }
+
+  tick(dt,input){
+    if (this.state!=='PLAYING'&&this.state!=='DYING') return;
+    this.time+=dt;
+    // 1. ввод зафиксирован (input — снимок тика)
+    // 2. фазы копания и ям, атомарные закрытия
+    for (const [key,h] of this.world.holes){
+      h.t+=dt;
+      if (h.phase==='OPEN' && h.t>=CFG.HOLE_LIFE-CFG.HOLE_WARN) h.phase='CLOSING_WARNING';
+      if (h.phase!=='DIGGING' && h.t>=CFG.HOLE_LIFE){
+        // атомарно: сначала жертвы, потом коллизия
+        const p=this.player;
+        if (p.mode!=='dead' &&
+            p.x+CFG.HW>h.c+0.02 && p.x-CFG.HW<h.c+1-0.02 &&
+            p.y+CFG.HH>h.r+0.02 && p.y-CFG.HH<h.r+1-0.02) this.killPlayer();
+        for (const g of this.guards){
+          if (g.state==='RESPAWNING'||g.state==='ASSEMBLE') continue;
+          const gx=g.x,gy=g.y;
+          if (gx+CFG.HW>h.c+0.02 && gx-CFG.HW<h.c+1-0.02 && gy+CFG.HH>h.r+0.02 && gy-CFG.HH<h.r+1-0.02){
+            this.killGuard(g);
+          }
+        }
+        this.world.holes.delete(key);
+        this.nav.bump();
+        this.emit('brickRestored',h.c,h.r);
+      }
+    }
+    // 3-4. охранники (навигация внутри) и игрок
+    this.occupancy.clear();
+    for (const g of this.guards) if (g.state==='CHASE'||g.state==='FALL') this.occupancy.set(this.world.key(g.cellC,g.cellR),g.id);
+    if (this.state==='PLAYING') this.player.update(this.world,this.guards,input,this,dt);
+    else this.player.update(this.world,this.guards,{dir:0,up:0,down:0,digSide:0},this,dt);
+    for (const g of this.guards) g.update(this.world,this.nav,this.player,this,dt,this.occupancy);
+    // 5. опора сверху/перенос уже внутри player.update; ямы — в FALL охранников
+    // 6. опасные контакты
+    if (this.state==='PLAYING') this.contacts();
+    // 7. золото и активация лестниц
+    this.goldTick(dt);
+    // 8. выход
+    if (this.state==='PLAYING') this.exitCheck();
+    // 9. смерть -> рестарт
+    if (this.state==='DYING' && this.player.deathT>=0.75){
+      if (this.mode==='editorTest'){ this.state='EDITOR_TEST_DEAD'; return; }
+      this.lives--;
+      if (this.lives<=0){ this.state='GAME_OVER'; this.emit('gameOver'); }
+      else this.restartAttempt();
+    }
+    if (this.shakeT>0) this.shakeT-=dt;
+  }
+
+  contacts(){
+    const p=this.player;
+    if (p.mode==='dead') return;
+    for (const g of this.guards){
+      if (g.state==='RESPAWNING'||g.state==='ASSEMBLE'||g.state==='TRAPPED') continue;
+      if (g.state==='CLIMB_OUT' && g.climbT<CFG.CLIMB_OUT) continue; // опасен только после подъёма
+      const overlap = p.x+CFG.HW>g.x-CFG.HW && p.x-CFG.HW<g.x+CFG.HW &&
+                      p.y+CFG.HH>g.y-CFG.HH && p.y-CFG.HH<g.y+CFG.HH;
+      if (!overlap) continue;
+      // безопасная стойка сверху: стопы игрока на верхней грани охранника, игрок выше
+      const gTop=g.y-CFG.HH;
+      if (p.feet()<=gTop+0.1 && p.y<g.y && p.mode!=='fall') continue;
+      if (p.mode==='fall' && p.y+CFG.HH<=gTop+0.12 && p.y<g.y) continue; // приземление на голову
+      this.killPlayer();
+      return;
+    }
+  }
+
+  goldTick(dt){
+    const w=this.world, p=this.player;
+    for (const g of w.gold){
+      if (g.dropT>0) g.dropT-=dt;
+      if (g.state!=='WORLD') continue;
+      if (g.dropT>0) continue;
+      if (p.mode==='dead') continue;
+      const dx=p.x-(g.c+0.5), dy=p.y-(g.r+0.5);
+      if (Math.abs(dx)<CFG.GOLD_GRAB && Math.abs(dy)<CFG.GOLD_GRAB+0.25){
+        g.state='COLLECTED';
+        this.score+=CFG.SCORE_GOLD;
+        this.emit('goldCollected',g.c,g.r);
+        const cnt=w.goldCounts();
+        if (cnt.col===w.initialGold && !w.exitsUnlocked){
+          w.exitsUnlocked=true; w.hiddenActive=true; this.nav.bump();
+          this.emit('exitUnlocked');
+        }
+      }
+    }
+  }
+
+  exitCheck(){
+    const p=this.player, w=this.world;
+    if (!w.exitsUnlocked) return;
+    for (const e of w.lv.exits){
+      if (p.cellC()===e.c && p.y-CFG.HH<=e.r+0.35){
+        this.levelComplete();
+        return;
+      }
+    }
+  }
+
+  levelComplete(){
+    this.score+=CFG.SCORE_LEVEL;
+    this.state='LEVEL_COMPLETE';
+    this.emit('levelComplete');
+  }
+}
+// ============ Рендерер ============
+const THEMES={
+  mine:   {bg:'#07111F',brick:'#33465c',brick2:'#26374a',accent:'#FFC857',far:'#0b1a2c',mid:'#102438',near:'#152c44'},
+  cool:   {bg:'#061320',brick:'#2c4a5e',brick2:'#213a4c',accent:'#54E7FF',far:'#08192a',mid:'#0d2438',near:'#122c44'},
+  reactor:{bg:'#0a0f1e',brick:'#3a3a55',brick2:'#2b2b42',accent:'#b07aff',far:'#10081f',mid:'#170d2c',near:'#1d1236'},
+};
+function hash2(c,r,s){ let h=(c*73856093)^(r*19349663)^(s*83492791); h=(h^(h>>13))*1274126177; return (h^(h>>16))>>>0; }
+function mkCanvas(w,h){ const cv=document.createElement('canvas'); cv.width=w; cv.height=h; return cv; }
+
+function makeTextures(theme){
+  const C=CFG.CELL, th=THEMES[theme], tex={};
+  tex.brick=[];
+  for (let v=0;v<4;v++){
+    const cv=mkCanvas(C,C), g=cv.getContext('2d');
+    g.fillStyle=th.brick; g.fillRect(0,0,C,C);
+    g.fillStyle=th.brick2; g.fillRect(0,C*0.5,C,1); g.fillRect(C*0.5,0,1,C*0.5); g.fillRect(C*0.25,C*0.5,1,C*0.5);
+    g.fillStyle='rgba(255,255,255,0.07)'; g.fillRect(0,0,C,2); g.fillRect(0,0,2,C);
+    g.fillStyle='rgba(0,0,0,0.25)'; g.fillRect(0,C-2,C,2); g.fillRect(C-2,0,2,C);
+    const h=hash2(v,7,3);
+    g.strokeStyle='rgba(0,0,0,0.35)'; g.lineWidth=1; g.beginPath();
+    const x=6+(h%20), y=8+((h>>5)%16);
+    g.moveTo(x,y); g.lineTo(x+6,y+4); g.lineTo(x+3,y+9); g.stroke();
+    if (h%3===0){ g.fillStyle='rgba(0,0,0,0.3)'; g.fillRect(C-10-(h%6),2,4,3); }
+    tex.brick.push(cv);
+  }
+  { const cv=mkCanvas(C,C), g=cv.getContext('2d');
+    g.fillStyle='#16283a'; g.fillRect(0,0,C,C);
+    g.fillStyle='#1e3348'; g.fillRect(2,2,C-4,C-4);
+    g.strokeStyle='rgba(84,231,255,0.15)'; g.lineWidth=2;
+    g.beginPath(); g.moveTo(C*0.15,C*0.85); g.lineTo(C*0.85,C*0.15); g.stroke();
+    g.fillStyle='#0c1826';
+    for (const [bx,by] of [[6,6],[C-10,6],[6,C-10],[C-10,C-10]]){ g.beginPath(); g.arc(bx+2,by+2,2.4,0,7); g.fill(); }
+    tex.monolith=cv; }
+  { const cv=mkCanvas(C,C), g=cv.getContext('2d');
+    g.drawImage(tex.brick[0],0,0);
+    g.strokeStyle='rgba(255,101,122,0.10)'; g.lineWidth=2;
+    g.beginPath(); g.moveTo(4,C-4); g.lineTo(C-4,4); g.stroke(); // едва заметный признак
+    tex.fake=cv; }
+  { const cv=mkCanvas(C,C), g=cv.getContext('2d');
+    g.fillStyle='#5d7590'; g.fillRect(C*0.22,0,4,C); g.fillRect(C*0.72,0,4,C);
+    g.fillStyle='#7d97ad'; g.fillRect(C*0.22,0,1.5,C); g.fillRect(C*0.72,0,1.5,C);
+    for (let i=0;i<4;i++){ const y=6+i*12;
+      g.fillStyle='#00000055'; g.fillRect(C*0.22,y+2,C*0.56,4);
+      g.fillStyle='#8fa8bf'; g.fillRect(C*0.22,y,C*0.56,3.5); }
+    tex.ladder=cv; }
+  { const cv=mkCanvas(C,C), g=cv.getContext('2d');
+    g.fillStyle='#3d5570'; g.fillRect(0,C*0.25,C,C*0.34);
+    g.fillStyle='#5d7590'; g.fillRect(0,C*0.25,C,2);
+    g.fillStyle='#22364c'; g.fillRect(0,C*0.55,C,2);
+    g.fillStyle='#7d97ad'; g.fillRect(0,C*0.25,3,C*0.34); g.fillRect(C-3,C*0.25,3,C*0.34);
+    tex.bar=cv; }
+  { const cv=mkCanvas(C,C), g=cv.getContext('2d');
+    g.fillStyle='#c9973f'; g.fillRect(C*0.28,C*0.55,C*0.2,C*0.28);
+    g.fillStyle='#FFC857'; g.fillRect(C*0.3,C*0.32,C*0.24,C*0.26); g.fillRect(C*0.5,C*0.5,C*0.22,C*0.3);
+    g.fillStyle='#ffe9b0'; g.fillRect(C*0.32,C*0.34,C*0.08,C*0.06);
+    tex.gold=cv; }
+  { const cv=mkCanvas(C,C), g=cv.getContext('2d');
+    g.fillStyle='#040a12'; g.fillRect(0,0,C,C);
+    g.fillStyle='rgba(84,231,255,0.12)'; g.fillRect(0,0,C,3); g.fillRect(0,0,3,C); g.fillRect(C-3,0,3,C);
+    tex.hole=cv; }
+  // фоны (параллакс)
+  tex.bg=[];
+  for (let layer=0;layer<3;layer++){
+    const cv=mkCanvas(CFG.W*C, CFG.H*C), g=cv.getContext('2d');
+    g.fillStyle=[th.far,th.mid,th.near][layer]; g.fillRect(0,0,cv.width,cv.height);
+    g.fillStyle='rgba(255,255,255,0.03)';
+    for (let i=0;i<14+layer*8;i++){
+      const h=hash2(i,layer,9);
+      const x=h%cv.width, y=(h>>9)%cv.height, w=20+(h>>3)%80, hh=8+(h>>6)%30;
+      g.fillRect(x,y,w,hh);
+    }
+    g.strokeStyle='rgba(84,231,255,0.05)'; g.lineWidth=3;
+    for (let i=0;i<4+layer*2;i++){
+      const h=hash2(i,layer,11);
+      g.beginPath(); g.moveTo(h%cv.width,0); g.lineTo((h>>8)%cv.width,cv.height); g.stroke();
+    }
+    tex.bg.push(cv);
+  }
+  return tex;
+}
+
+class Renderer {
+  constructor(canvas){
+    this.canvas=canvas; this.ctx=canvas.getContext('2d');
+    this.tex=null; this.theme=null;
+    this.glow=mkCanvas(CFG.W*CFG.CELL/2, CFG.H*CFG.CELL/2); this.gctx=this.glow.getContext('2d');
+    this.particles=[]; this.particleMax=450;
+    this.time=0;
+  }
+  setTheme(t){ if (t===this.theme) return; this.theme=t; this.tex=makeTextures(t); }
+  setQuality(q){ this.particleMax={low:150,medium:450,high:900}[q]||450; }
+  spawn(n,x,y,color,opts={}){
+    for (let i=0;i<n;i++){
+      if (this.particles.length>=this.particleMax) return;
+      const a=Math.random()*Math.PI*2, sp=(opts.sp||1)*(0.3+Math.random());
+      this.particles.push({x,y,vx:Math.cos(a)*sp+(opts.vx||0),vy:Math.sin(a)*sp+(opts.vy||0),
+        life:opts.life||0.5, t:0, color, size:opts.size||2, grav:opts.grav??9});
+    }
+  }
+  updateParticles(dt){
+    for (let i=this.particles.length-1;i>=0;i--){
+      const p=this.particles[i]; p.t+=dt;
+      if (p.t>=p.life){ this.particles.splice(i,1); continue; }
+      p.vy+=p.grav*dt; p.x+=p.vx*dt; p.y+=p.vy*dt;
+    }
+  }
+  draw(game,dt){
+    const ctx=this.ctx, C=CFG.CELL, w=game.world;
+    this.time+=dt;
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.fillStyle=THEMES[this.theme].bg; ctx.fillRect(0,0,this.canvas.width,this.canvas.height);
+    // параллакс (очень слабый)
+    for (let l=0;l<3;l++){
+      const off=Math.sin(this.time*0.15+l*2)*(2+l*2);
+      ctx.drawImage(this.tex.bg[l],off,off*0.4);
+    }
+    let sx=0,sy=0;
+    if (game.shakeT>0 && settings.shake && !reducedMotion){ sx=(Math.random()-0.5)*6; sy=(Math.random()-0.5)*6; }
+    ctx.save(); ctx.translate(sx,sy);
+    // тайлы
+    for (let r=0;r<CFG.H;r++) for (let c=0;c<CFG.W;c++){
+      const t=w.terrain[r][c], f=w.fix(c,r), hole=w.holeAt(c,r);
+      const x=c*C, y=r*C;
+      if (t===T.BRICK){
+        if (hole){ this.drawHole(ctx,x,y,hole); }
+        else ctx.drawImage(this.tex.brick[hash2(c,r,5)%4],x,y);
+      } else if (t===T.MONOLITH) ctx.drawImage(this.tex.monolith,x,y);
+      else if (t===T.FALSE) ctx.drawImage(this.tex.fake,x,y);
+      else if (hole) this.drawHole(ctx,x,y,hole);
+      if (f===F.LADDER||(f===F.HLADDER&&w.hiddenActive)){
+        ctx.drawImage(this.tex.ladder,x,y);
+        if (f===F.HLADDER&&w.hiddenActive){ ctx.fillStyle='rgba(84,231,255,0.10)'; ctx.fillRect(x,y,C,C); }
+      }
+      if (f===F.BAR) ctx.drawImage(this.tex.bar,x,y);
+    }
+    // выход
+    for (const e of w.lv.exits){
+      const x=e.c*C, y=e.r*C;
+      ctx.fillStyle=w.exitsUnlocked?'#123a2e':'#2a1622'; ctx.fillRect(x+4,y+2,C-8,C-4);
+      ctx.strokeStyle=w.exitsUnlocked?'#54E7FF':'#FF657A'; ctx.lineWidth=2;
+      ctx.strokeRect(x+4.5,y+2.5,C-9,C-5);
+      ctx.fillStyle=w.exitsUnlocked?'#54E7FF':'#FF657A';
+      ctx.beginPath(); ctx.moveTo(x+C/2,y+C*0.75); ctx.lineTo(x+C/2-7,y+C*0.45); ctx.lineTo(x+C/2+7,y+C*0.45); ctx.closePath(); ctx.fill();
+    }
+    // золото
+    for (const g of w.gold){
+      if (g.state!=='WORLD') continue;
+      ctx.drawImage(this.tex.gold,g.c*C,g.r*C);
+    }
+    // акторы
+    for (const g of game.guards) this.drawGuard(ctx,g);
+    this.drawPlayer(ctx,game.player);
+    // частицы
+    for (const p of this.particles){
+      const a=1-p.t/p.life;
+      ctx.globalAlpha=a; ctx.fillStyle=p.color;
+      ctx.fillRect(p.x*C-p.size/2,p.y*C-p.size/2,p.size,p.size);
+    }
+    ctx.globalAlpha=1;
+    ctx.restore();
+    // свечение (буфер в половинном разрешении, additive)
+    this.drawGlow(game,sx,sy);
+  }
+  drawHole(ctx,x,y,h){
+    ctx.drawImage(this.tex.hole,x,y);
+    if (h.phase==='CLOSING_WARNING'){
+      const f=0.5+0.5*Math.sin(this.time*20);
+      ctx.fillStyle=`rgba(255,101,122,${0.25*f})`;
+      ctx.fillRect(x,y,CFG.CELL,4); ctx.fillRect(x,y,4,CFG.CELL); ctx.fillRect(x+CFG.CELL-4,y,4,CFG.CELL);
+    }
+  }
+  drawGlow(game,sx,sy){
+    const g=this.gctx, C=CFG.CELL/2, w=game.world;
+    g.clearRect(0,0,this.glow.width,this.glow.height);
+    g.fillStyle='rgba(255,200,87,0.25)';
+    for (const gd of w.gold) if (gd.state==='WORLD'){ g.beginPath(); g.arc((gd.c+0.5)*C,(gd.r+0.5)*C,C*0.9,0,7); g.fill(); }
+    if (w.exitsUnlocked) for (const e of w.lv.exits){ g.fillStyle='rgba(84,231,255,0.3)'; g.beginPath(); g.arc((e.c+0.5)*C,(e.r+0.5)*C,C*1.2,0,7); g.fill(); }
+    const p=game.player;
+    if (p.mode!=='dead'){ g.fillStyle='rgba(84,231,255,0.18)'; g.beginPath(); g.arc(p.x*C,p.y*C,C*1.1,0,7); g.fill(); }
+    for (const h of w.holes.values()) if (h.phase==='CLOSING_WARNING'){ g.fillStyle='rgba(255,101,122,0.3)'; g.beginPath(); g.arc((h.c+0.5)*C,(h.r+0.5)*C,C,0,7); g.fill(); }
+    this.ctx.globalCompositeOperation='lighter';
+    this.ctx.drawImage(this.glow,sx,sy,this.canvas.width,this.canvas.height);
+    this.ctx.globalCompositeOperation='source-over';
+  }
+}
+// ============ Персонажи (процедурная иерархия сегментов) ============
+Renderer.prototype.drawPlayer=function(ctx,p){
+  if (p.mode==='dead') return;
+  const C=CFG.CELL, px=p.x*C, py=p.y*C, d=p.dir;
+  const sw=Math.sin(p.stepPhase*3), walk=(p.mode==='walk'||p.mode==='bar')&&Math.abs(p.dx||0)>=0;
+  const legA = (p.mode==='walk')? sw*0.14*C : (p.mode==='ladder'? Math.sin(p.stepPhase*3)*0.1*C : 0.05*C);
+  ctx.save(); ctx.translate(px,py);
+  // ноги
+  ctx.strokeStyle='#2c4258'; ctx.lineWidth=C*0.07; ctx.lineCap='round';
+  const fy=CFG.HH*C;
+  ctx.beginPath();
+  if (p.mode==='bar'){ ctx.moveTo(-0.04*C,0.12*C); ctx.lineTo(-0.05*C,fy*0.9); ctx.moveTo(0.04*C,0.12*C); ctx.lineTo(0.06*C,fy*0.9); }
+  else { ctx.moveTo(0,0.12*C); ctx.lineTo(legA*0.6,fy); ctx.moveTo(0,0.12*C); ctx.lineTo(-legA*0.6,fy); }
+  ctx.stroke();
+  // рюкзак
+  ctx.fillStyle='#1e3348'; ctx.fillRect(-d*0.16*C-0.06*C,-0.14*C,0.12*C,0.24*C);
+  // торс
+  ctx.fillStyle='#3a5a75';
+  ctx.beginPath(); ctx.roundRect(-0.11*C,-0.16*C,0.22*C,0.3*C,0.05*C); ctx.fill();
+  ctx.fillStyle='#54E7FF'; ctx.fillRect(-0.11*C,-0.02*C,0.22*C,0.02*C);
+  // руки
+  ctx.strokeStyle='#3a5a75'; ctx.lineWidth=C*0.06;
+  ctx.beginPath();
+  if (p.mode==='ladder'){ ctx.moveTo(0,-0.1*C); ctx.lineTo(0.12*C*d,-0.34*C); ctx.moveTo(0,-0.1*C); ctx.lineTo(-0.05*C*d,-0.3*C); }
+  else if (p.mode==='bar'){ ctx.moveTo(0,-0.12*C); ctx.lineTo(0.09*C,-0.42*C); ctx.moveTo(0,-0.12*C); ctx.lineTo(-0.09*C,-0.42*C); }
+  else if (p.mode==='dig'){ const s=p.dig?p.dig.side:d; ctx.moveTo(0,-0.08*C); ctx.lineTo(s*0.3*C,0.1*C); }
+  else if (p.mode==='fall'){ ctx.moveTo(0,-0.1*C); ctx.lineTo(0.14*C,-0.3*C); ctx.moveTo(0,-0.1*C); ctx.lineTo(-0.14*C,-0.3*C); }
+  else { ctx.moveTo(0,-0.08*C); ctx.lineTo(d*0.16*C+legA*0.4,0.06*C); }
+  ctx.stroke();
+  // бур
+  if (p.mode==='dig'){
+    const s=p.dig?p.dig.side:d;
+    ctx.strokeStyle='#8fa8bf'; ctx.lineWidth=C*0.05;
+    ctx.beginPath(); ctx.moveTo(s*0.2*C,0.02*C); ctx.lineTo(s*0.36*C,0.16*C); ctx.stroke();
+    ctx.fillStyle='#54E7FF'; ctx.beginPath(); ctx.arc(s*0.38*C,0.18*C,C*0.05,0,7); ctx.fill();
+  }
+  // голова + визор
+  ctx.fillStyle='#cfe6f5'; ctx.beginPath(); ctx.arc(0,-0.27*C,0.11*C,0,7); ctx.fill();
+  ctx.fillStyle='#0a1626'; ctx.beginPath(); ctx.arc(d*0.04*C,-0.27*C,0.07*C,0,7); ctx.fill();
+  ctx.fillStyle='#54E7FF'; ctx.beginPath(); ctx.arc(d*0.05*C,-0.28*C,0.035*C,0,7); ctx.fill();
+  ctx.restore();
+};
+Renderer.prototype.drawGuard=function(ctx,g){
+  if (g.state==='RESPAWNING') return;
+  const C=CFG.CELL, px=g.x*C, py=g.y*C;
+  ctx.save(); ctx.translate(px,py);
+  if (g.state==='ASSEMBLE'){
+    ctx.globalAlpha=1-g.respawnT/CFG.RESPAWN_ASSEMBLE;
+  }
+  if (g.state==='TRAPPED'){ ctx.translate(0,0.22*C); }
+  const d=g.dx>=0?1:-1;
+  const sw=Math.sin(g.stepPhase*3);
+  // ноги
+  ctx.strokeStyle='#4a2f3a'; ctx.lineWidth=C*0.075; ctx.lineCap='round';
+  ctx.beginPath();
+  const fy=CFG.HH*C;
+  if (g.state==='TRAPPED'){ ctx.moveTo(-0.06*C,0.1*C); ctx.lineTo(-0.08*C,fy*0.7); ctx.moveTo(0.06*C,0.1*C); ctx.lineTo(0.08*C,fy*0.7); }
+  else { ctx.moveTo(0,0.12*C); ctx.lineTo(sw*0.1*C,fy); ctx.moveTo(0,0.12*C); ctx.lineTo(-sw*0.1*C,fy); }
+  ctx.stroke();
+  // угловатый широкий корпус
+  ctx.fillStyle='#6b3746';
+  ctx.beginPath();
+  ctx.moveTo(-0.16*C,-0.18*C); ctx.lineTo(0.16*C,-0.18*C); ctx.lineTo(0.13*C,0.14*C); ctx.lineTo(-0.13*C,0.14*C); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#8a4a5c'; ctx.fillRect(-0.19*C,-0.18*C,0.38*C,0.05*C); // плечи
+  // сенсор
+  const blink=g.state==='TRAPPED'? (Math.sin(this.time*10)>0?1:0.3) : 1;
+  ctx.fillStyle=`rgba(255,101,122,${blink})`;
+  ctx.beginPath(); ctx.arc(d*0.05*C,-0.26*C,0.05*C,0,7); ctx.fill();
+  ctx.fillStyle='#3a2028'; ctx.beginPath(); ctx.arc(0,-0.25*C,0.09*C,0,7); ctx.fill();
+  ctx.fillStyle=`rgba(255,101,122,${blink})`; ctx.beginPath(); ctx.arc(d*0.03*C,-0.25*C,0.04*C,0,7); ctx.fill();
+  // руки
+  ctx.strokeStyle='#6b3746'; ctx.lineWidth=C*0.06;
+  ctx.beginPath(); ctx.moveTo(0,-0.1*C); ctx.lineTo(d*0.15*C,0.05*C+sw*0.03*C); ctx.stroke();
+  // индикатор переносимого золота
+  if (g.carryGold){ ctx.fillStyle='#FFC857'; ctx.beginPath(); ctx.arc(0,-0.36*C,0.05*C,0,7); ctx.fill(); }
+  ctx.restore();
+};
+// ============ Настройки и хранилище ============
+const reducedMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+let settings={sfx:70,music:40,quality:'medium',shake:!reducedMotion};
+let progress={unlocked:0,lastLevel:0,score:0,lives:CFG.LIVES_START,records:{easy:null,normal:null,hard:null},customs:[]};
+const SKEY='oreRunner.v1';
+function saveAll(){
+  try{ localStorage.setItem(SKEY, JSON.stringify({v:1,settings,progress})); }
+  catch(e){ toast('Сохранение недоступно — игра продолжит работу в памяти'); }
+}
+function loadAll(){
+  try{
+    const raw=localStorage.getItem(SKEY); if(!raw) return;
+    const d=JSON.parse(raw);
+    if (d&&d.v===1){ Object.assign(settings,d.settings||{}); Object.assign(progress,d.progress||{}); }
+  }catch(e){ /* повреждённое сохранение игнорируем */ }
+}
+
+// ============ Звук ============
+const AudioSys={
+  ctx:null, master:null, sfxG:null, musG:null, voices:0, musicNodes:[],
+  ensure(){
+    if (this.ctx) { if (this.ctx.state==='suspended') this.ctx.resume(); return; }
+    try{
+      this.ctx=new (window.AudioContext||window.webkitAudioContext)();
+      this.master=this.ctx.createGain(); this.master.connect(this.ctx.destination);
+      this.sfxG=this.ctx.createGain(); this.sfxG.connect(this.master);
+      this.musG=this.ctx.createGain(); this.musG.connect(this.master);
+      this.applyVolumes();
+    }catch(e){ this.ctx=null; }
+  },
+  applyVolumes(){
+    if (!this.ctx) return;
+    this.sfxG.gain.value=settings.sfx/100;
+    this.musG.gain.value=settings.music/100*0.35;
+  },
+  tone(freq,dur,type,vol,slide){
+    if (!this.ctx||this.voices>14) return;
+    const t=this.ctx.currentTime, o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type||'sine'; o.frequency.setValueAtTime(freq,t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30,freq+slide),t+dur);
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime((vol||0.2),t+0.01);
+    g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(g); g.connect(this.sfxG); o.start(t); o.stop(t+dur+0.02); this.voices++;
+    o.onended=()=>this.voices--;
+  },
+  noise(dur,filterFreq,vol){
+    if (!this.ctx||this.voices>14) return;
+    const t=this.ctx.currentTime, n=this.ctx.createBufferSource();
+    const buf=this.ctx.createBuffer(1,this.ctx.sampleRate*dur,this.ctx.sampleRate);
+    const ch=buf.getChannelData(0); for(let i=0;i<ch.length;i++) ch[i]=Math.random()*2-1;
+    n.buffer=buf;
+    const f=this.ctx.createBiquadFilter(); f.type='bandpass'; f.frequency.value=filterFreq;
+    const g=this.ctx.createGain(); g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    n.connect(f); f.connect(g); g.connect(this.sfxG); n.start(t); this.voices++;
+    n.onended=()=>this.voices--;
+  },
+  click(){ this.tone(600,0.06,'square',0.08); },
+  step(){ this.noise(0.04,900,0.05); },
+  dig(){ this.noise(0.22,400,0.25); this.tone(120,0.22,'sawtooth',0.1,-60); },
+  gold(){ [660,880,1100].forEach((f,i)=>setTimeout(()=>this.tone(f,0.12,'triangle',0.15),i*60)); },
+  trap(){ this.tone(200,0.25,'square',0.15,-120); },
+  restore(){ this.noise(0.1,250,0.15); this.tone(90,0.15,'sine',0.12); },
+  exit(){ [520,660,780,1040].forEach((f,i)=>setTimeout(()=>this.tone(f,0.15,'triangle',0.12),i*90)); },
+  death(){ this.tone(300,0.5,'sawtooth',0.2,-240); this.noise(0.4,300,0.2); },
+  win(){ [523,659,784,1046,1318].forEach((f,i)=>setTimeout(()=>this.tone(f,0.25,'triangle',0.15),i*120)); },
+  startMusic(){
+    if (!this.ctx||this.musicNodes.length) return;
+    const t=this.ctx.currentTime;
+    const o1=this.ctx.createOscillator(), o2=this.ctx.createOscillator(),
+          g=this.ctx.createGain(), lfo=this.ctx.createOscillator(), lg=this.ctx.createGain();
+    o1.type='sine'; o1.frequency.value=55; o2.type='triangle'; o2.frequency.value=82.5;
+    g.gain.value=0.25; lfo.frequency.value=0.07; lg.gain.value=0.12;
+    lfo.connect(lg); lg.connect(g.gain);
+    o1.connect(g); o2.connect(g); g.connect(this.musG);
+    o1.start(t); o2.start(t); lfo.start(t);
+    this.musicNodes=[o1,o2,lfo,g];
+  },
+  stopMusic(){ for(const n of this.musicNodes){ try{n.stop&&n.stop();}catch(e){} try{n.disconnect();}catch(e){} } this.musicNodes=[]; },
+};
+
+// ============ Ввод ============
+const Input={
+  held:new Set(), pressOrder:[], digSide:0, digT:0,
+  touch:{left:0,right:0,up:0,down:0},
+  init(){
+    addEventListener('keydown',e=>{
+      if (e.target.tagName==='INPUT'||e.target.tagName==='SELECT'||e.target.tagName==='TEXTAREA') return;
+      const c=e.code;
+      const map={ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right',ArrowUp:'up',KeyW:'up',ArrowDown:'down',KeyS:'down'};
+      if (map[c]){ if(!this.held.has(map[c])) this.pressOrder.push(map[c]); this.held.add(map[c]); e.preventDefault(); }
+      if (c==='KeyZ'||c==='KeyQ'||c==='KeyX'||c==='KeyE'){ this.digSide=2; this.digT=CFG.DIG_BUFFER; } // 2 = копать в сторону взгляда
+      if (c==='Escape'||c==='KeyP') togglePause();
+      if (c==='KeyM'){ settings.sfx=settings.sfx?0:70; AudioSys.applyVolumes(); saveAll(); }
+      if (c==='KeyF') tryFullscreen();
+      if (c==='KeyR'&&game.state==='PLAYING') confirmRestart();
+      if (c==='Enter'){ // Enter = нажать главную кнопку текущего экрана/оверлея
+        const vis=id=>{const el=document.getElementById(id); return el&&el.offsetParent!==null;};
+        if (vis('ov-level')) $('btnNextLevel').click();
+        else if (vis('screen-tutorial')) $('btnTutOk').click();
+      }
+    });
+    addEventListener('keyup',e=>{
+      const map={ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right',ArrowUp:'up',KeyW:'up',ArrowDown:'down',KeyS:'down'};
+      const k=map[e.code]; if (k){ this.held.delete(k); this.pressOrder=this.pressOrder.filter(x=>x!==k); }
+    });
+    const clear=()=>{ this.held.clear(); this.pressOrder=[]; };
+    addEventListener('blur',clear);
+    document.addEventListener('visibilitychange',()=>{ if(document.hidden){ clear(); if(game.state==='PLAYING') togglePause(); } });
+    // тач
+    document.body.classList.toggle('touch',('ontouchstart' in window)||navigator.maxTouchPoints>0);
+    const bind=(id,key)=>{
+      const el=document.getElementById(id);
+      el.addEventListener('pointerdown',e=>{ e.preventDefault(); el.setPointerCapture(e.pointerId); this.touch[key]=1; });
+      const up=()=>{ this.touch[key]=0; };
+      el.addEventListener('pointerup',up); el.addEventListener('pointercancel',up);
+    };
+    bind('tLeft','left'); bind('tRight','right'); bind('tUp','up'); bind('tDown','down');
+    document.getElementById('tDigL').addEventListener('pointerdown',e=>{e.preventDefault();this.digSide=-1;this.digT=CFG.DIG_BUFFER;});
+    document.getElementById('tDigR').addEventListener('pointerdown',e=>{e.preventDefault();this.digSide=1;this.digT=CFG.DIG_BUFFER;});
+    document.getElementById('tPause').addEventListener('pointerdown',e=>{e.preventDefault();togglePause();});
+  },
+  snapshot(dt){
+    if (this.digT>0){ this.digT-=dt; if(this.digT<=0) this.digSide=0; }
+    let dir=0;
+    const L=this.held.has('left')||this.touch.left, R=this.held.has('right')||this.touch.right;
+    if (L&&R) dir=this.pressOrder[this.pressOrder.length-1]==='right'?1:-1;
+    else if (L) dir=-1; else if (R) dir=1;
+    const snap={dir, up:(this.held.has('up')||this.touch.up)?1:0, down:(this.held.has('down')||this.touch.down)?1:0, digSide:this.digSide};
+    this.digSide=0;
+    return snap;
+  },
+};
+// ============ Приложение: цикл, экраны, HUD ============
+const game=new Game();
+let renderer=null;
+const $=id=>document.getElementById(id);
+function toast(msg){ const t=$('toast'); if(!t) return; t.textContent=msg; t.style.display='block'; clearTimeout(toast._t); toast._t=setTimeout(()=>t.style.display='none',3500); }
+function showScreen(name){
+  for (const s of document.querySelectorAll('.screen')) s.classList.toggle('active',s.id==='screen-'+name);
+}
+function tryFullscreen(){ try{ if(!document.fullscreenElement) document.documentElement.requestFullscreen(); else document.exitFullscreen(); }catch(e){} }
+function togglePause(){
+  if (game.state==='PLAYING'){ game.state='PAUSED'; $('ov-pause').classList.add('active'); }
+  else if (game.state==='PAUSED'){ game.state='PLAYING'; $('ov-pause').classList.remove('active'); }
+}
+function confirmRestart(){ if (game.state==='PLAYING') togglePause(); }
+function hideOverlays(){ for (const o of document.querySelectorAll('.overlay')) o.classList.remove('active'); }
+
+function handleEvents(){
+  for (const e of game.drainEvents()){
+    const C=CFG.CELL;
+    switch(e.ev){
+      case 'digStarted': AudioSys.dig(); renderer.spawn(14,(e.a+0.5),(e.b+0.5),'#FFC857',{sp:2,vy:-1,life:0.4,size:2}); break;
+      case 'holeOpened': renderer.spawn(8,e.a+0.5,e.b+0.5,'#54E7FF',{sp:1.5,life:0.3}); break;
+      case 'brickRestored': renderer.spawn(10,e.a+0.5,e.b+0.5,'#8fa8bf',{sp:1.5,life:0.35}); AudioSys.restore(); break;
+      case 'goldCollected': AudioSys.gold(); renderer.spawn(16,e.a+0.5,e.b+0.5,'#FFC857',{sp:2.5,grav:2,life:0.5,size:3}); break;
+      case 'guardTrapped': AudioSys.trap(); renderer.spawn(20,e.a+0.5,e.b+0.5,'#FF657A',{sp:2,life:0.5}); break;
+      case 'guardKilled': renderer.spawn(30,e.a,e.b,'#FF657A',{sp:3,life:0.6,size:3}); break;
+      case 'exitUnlocked': AudioSys.exit(); break;
+      case 'playerDied': AudioSys.death(); renderer.spawn(40,e.a,e.b,'#54E7FF',{sp:4,life:0.7,size:3}); break;
+      case 'respawnStart': renderer.spawn(12,e.a,e.b,'#FF657A',{sp:1,life:0.6}); break;
+      case 'levelComplete': AudioSys.win(); break;
+    }
+  }
+}
+
+function updateHUD(){
+  if (!game.world) return;
+  const cnt=game.world.goldCounts();
+  $('hudGold').textContent=`Золото ${cnt.col}/${game.world.initialGold}`;
+  $('hudLives').textContent = game.mode==='campaign'? 'Жизни: '+game.lives : (game.mode==='practice'?'Практика':'Тест');
+  $('hudLevel').textContent=game.lv.title;
+  $('hudScore').textContent='Счёт: '+game.score;
+  const m=Math.floor(game.time/60), s=Math.floor(game.time%60);
+  $('hudTime').textContent=m+':'+String(s).padStart(2,'0');
+}
+
+let acc=0, last=performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  let dt=(now-last)/1000; last=now;
+  if (dt>CFG.MAX_FRAME) dt=CFG.MAX_FRAME;
+  if (game.state==='PLAYING'||game.state==='DYING'){
+    acc+=dt; let steps=0;
+    while (acc>=CFG.DT && steps<CFG.MAX_STEPS){
+      game.tick(CFG.DT, Input.snapshot(CFG.DT));
+      acc-=CFG.DT; steps++;
+      if (game.state==='EDITOR_TEST_DEAD'){ editorTestEnd(); break; }
+      if (game.state==='LEVEL_COMPLETE' && game.mode==='editorTest'){ editorTestEnd(); break; }
+    }
+    if (steps>=CFG.MAX_STEPS) acc=0;
+    handleEvents();
+  }
+  if (game.world && (game.state!=='MENU')){
+    renderer.setTheme(game.lv.theme);
+    renderer.updateParticles(dt);
+    renderer.draw(game,dt);
+    updateHUD();
+  }
+}
+// страховка: в webview без requestAnimationFrame цикл гоняем таймером (обычный браузер не затронет)
+if (typeof requestAnimationFrame==='function')
+  setInterval(()=>{ if (!document.hidden && performance.now()-last>40) frame(performance.now()); }, 50);
+
+// ============ Переходы кампании ============
+function startCampaign(fromLevel){
+  game.lives=CFG.LIVES_START; game.score=0;
+  progress.score=0; progress.lives=game.lives;
+  game.levelIndex=fromLevel;
+  game.startLevel(parseLevel(LEVELS[fromLevel]),'campaign',$('menuDiff').value);
+  hideOverlays(); showScreen('game');
+}
+function onLevelComplete(){
+  if (game.mode==='campaign'){
+    const idx=game.levelIndex;
+    progress.unlocked=Math.max(progress.unlocked,Math.min(idx+1,LEVELS.length-1));
+    progress.lastLevel=Math.min(idx+1,LEVELS.length-1);
+    game.lives=Math.min(CFG.LIVES_MAX,game.lives+1);
+    progress.score=game.score; progress.lives=game.lives;
+    if (idx>=LEVELS.length-1){
+      game.state='CAMPAIGN_COMPLETE';
+      if (!progress.records[game.difficulty]||game.score>progress.records[game.difficulty]) progress.records[game.difficulty]=game.score;
+      saveAll();
+      $('campInfo').textContent='Финальный счёт: '+game.score+' · сложность: '+game.difficulty;
+      $('ov-campaign').classList.add('active');
+    } else {
+      saveAll();
+      $('lvlDoneInfo').textContent='Счёт: '+game.score+' · жизни: '+game.lives+' · время: '+Math.floor(game.time)+' с';
+      $('ov-level').classList.add('active');
+    }
+  } else if (game.mode==='practice'){
+    if (!progress.records[game.difficulty]||game.score>progress.records[game.difficulty]) progress.records[game.difficulty]=game.score;
+    saveAll();
+    $('lvlDoneInfo').textContent='Счёт: '+game.score+' · время: '+Math.floor(game.time)+' с';
+    $('ov-level').classList.add('active');
+  }
+}
+function onGameOver(){
+  if (game.mode==='campaign'){ progress.score=game.score; progress.lives=0; }
+  if (!progress.records[game.difficulty]||game.score>progress.records[game.difficulty]) progress.records[game.difficulty]=game.score;
+  saveAll();
+  $('goInfo').textContent='Счёт: '+game.score;
+  $('ov-gameover').classList.add('active');
+}
+// встраиваем реакции на смену состояния
+const _origTick=Game.prototype.tick;
+Game.prototype.tick=function(dt,input){
+  const prev=this.state;
+  _origTick.call(this,dt,input);
+  if (prev!=='LEVEL_COMPLETE'&&this.state==='LEVEL_COMPLETE'&&this.mode!=='editorTest'&&document.getElementById('gameCanvas')) onLevelComplete();
+  if (prev!=='GAME_OVER'&&this.state==='GAME_OVER'&&document.getElementById('gameCanvas')) onGameOver();
+};
+
+function buildLevelGrid(mode){
+  const grid=$('levelGrid'); grid.textContent='';
+  LEVELS.forEach((lv,i)=>{
+    const card=document.createElement('div');
+    const locked = i>progress.unlocked;
+    card.className='lvlCard'+(locked?' locked':'');
+    const zn=document.createElement('div'); zn.className='zn'; zn.textContent=(i+1)+' · '+lv.zone;
+    const nm=document.createElement('div'); nm.className='nm'; nm.textContent=lv.title;
+    const h=document.createElement('div'); h.className='muted'; h.style.textAlign='left'; h.textContent=lv.hint;
+    card.append(zn,nm,h);
+    if (!locked) card.addEventListener('click',()=>{
+      game.levelIndex=i;
+      game.startLevel(parseLevel(lv),mode,$('menuDiff').value);
+      hideOverlays(); showScreen('game');
+    });
+    grid.appendChild(card);
+  });
+}
+// ============ Редактор ============
+const ED={ lv:null, brush:'brick', undo:[], redo:[], EC:29 };
+function blankLevel(){
+  const terrain=[],fixtures=[];
+  for(let r=0;r<CFG.H;r++){ terrain.push(new Array(CFG.W).fill(T.AIR)); fixtures.push(new Array(CFG.W).fill(F.NONE)); }
+  terrain[CFG.H-1]=new Array(CFG.W).fill(T.BRICK);
+  return {schemaVersion:1,id:'custom-'+Date.now().toString(36),title:'Мой уровень',theme:'mine',
+    width:CFG.W,height:CFG.H,terrain,fixtures,
+    playerSpawn:{c:1,r:CFG.H-2},guards:[],respawnPoints:[{c:13,r:1}],gold:[],exits:[{c:13,r:0}]};
+}
+function edPushUndo(){ ED.undo.push(JSON.stringify(ED.lv)); if(ED.undo.length>50)ED.undo.shift(); ED.redo=[]; }
+function edMsg(list){ $('editorMsg').textContent=list&&list.length?list.join('\n'):''; }
+function showEditor(){
+  if(!ED.lv) ED.lv=blankLevel();
+  $('edTitle').value=ED.lv.title; $('edTheme').value=ED.lv.theme;
+  drawEditor(); renderCustoms(); showScreen('editor');
+}
+function drawEditor(){
+  const cv=$('editorCanvas'), g=cv.getContext('2d'), EC=ED.EC, lv=ED.lv;
+  g.clearRect(0,0,cv.width,cv.height);
+  const tc=['#0a1420','#33465c','#16283a','#3a3a55'], fc=['',' #5d7590','#3d5570','#54E7FF'];
+  for(let r=0;r<CFG.H;r++)for(let c=0;c<CFG.W;c++){
+    g.fillStyle=tc[lv.terrain[r][c]]; g.fillRect(c*EC,r*EC,EC,EC);
+    if(lv.fixtures[r][c]===F.LADDER){g.fillStyle='#5d7590';g.fillRect(c*EC+6,r*EC,3,EC);g.fillRect(c*EC+EC-9,r*EC,3,EC);}
+    if(lv.fixtures[r][c]===F.BAR){g.fillStyle='#3d5570';g.fillRect(c*EC,r*EC+4,EC,6);}
+    if(lv.fixtures[r][c]===F.HLADDER){g.strokeStyle='#54E7FF';g.strokeRect(c*EC+4,r*EC+4,EC-8,EC-8);}
+  }
+  g.strokeStyle='#1c3247';
+  for(let c=0;c<=CFG.W;c++){g.beginPath();g.moveTo(c*EC,0);g.lineTo(c*EC,CFG.H*EC);g.stroke();}
+  for(let r=0;r<=CFG.H;r++){g.beginPath();g.moveTo(0,r*EC);g.lineTo(CFG.W*EC,r*EC);g.stroke();}
+  g.fillStyle='#FFC857'; for(const gd of lv.gold){g.beginPath();g.arc(gd.c*EC+EC/2,gd.r*EC+EC/2,5,0,7);g.fill();}
+  g.fillStyle='#FF657A'; for(const gd of lv.guards){g.fillRect(gd.c*EC+6,gd.r*EC+6,EC-12,EC-12);}
+  g.fillStyle='#54E7FF'; for(const p of lv.respawnPoints){g.fillRect(p.c*EC+8,p.r*EC+8,EC-16,EC-16);}
+  g.fillStyle='#7CFC98'; for(const e of lv.exits){g.fillRect(e.c*EC+4,e.r*EC+2,EC-8,EC-4);}
+  g.fillStyle='#cfe6f5'; g.beginPath(); g.arc(lv.playerSpawn.c*EC+EC/2,lv.playerSpawn.r*EC+EC/2,7,0,7); g.fill();
+}
+function edApply(c,r){
+  const lv=ED.lv, b=ED.brush;
+  if(b==='air'||b==='brick'||b==='monolith'||b==='fake'){
+    const v={air:T.AIR,brick:T.BRICK,monolith:T.MONOLITH,fake:T.FALSE}[b];
+    if(lv.terrain[r][c]===v) return;
+    edPushUndo(); lv.terrain[r][c]=v;
+  } else if(b==='ladder'||b==='bar'||b==='hladder'){
+    const v={ladder:F.LADDER,bar:F.BAR,hladder:F.HLADDER}[b];
+    if(lv.terrain[r][c]!==T.AIR) lv.terrain[r][c]=T.AIR;
+    if(lv.fixtures[r][c]===v){ edPushUndo(); lv.fixtures[r][c]=F.NONE; }
+    else { edPushUndo(); lv.fixtures[r][c]=v; }
+  } else if(b==='gold'){
+    const i=lv.gold.findIndex(g=>g.c===c&&g.r===r);
+    edPushUndo();
+    if(i>=0) lv.gold.splice(i,1);
+    else { let id=1; while(lv.gold.some(g=>g.id===id))id++; lv.gold.push({id,c,r}); }
+  } else if(b==='guard'){
+    const i=lv.guards.findIndex(g=>g.c===c&&g.r===r);
+    edPushUndo();
+    if(i>=0) lv.guards.splice(i,1);
+    else if(lv.guards.length<6){ let id=1; while(lv.guards.some(g=>g.id===id))id++; lv.guards.push({id,c,r}); }
+  } else if(b==='respawn'){
+    const i=lv.respawnPoints.findIndex(p=>p.c===c&&p.r===r);
+    edPushUndo();
+    if(i>=0) lv.respawnPoints.splice(i,1); else lv.respawnPoints.push({c,r});
+  } else if(b==='exit'){
+    const i=lv.exits.findIndex(e=>e.c===c&&e.r===r);
+    edPushUndo();
+    if(i>=0) lv.exits.splice(i,1); else lv.exits.push({c,r:0});
+  } else if(b==='spawn'){
+    edPushUndo(); lv.playerSpawn={c,r};
+  }
+  drawEditor();
+}
+function initEditorUI(){
+  const brushes=[['air','Воздух'],['brick','Кирпич'],['monolith','Монолит'],['fake','Ложный'],['ladder','Лестница'],['bar','Перекладина'],['hladder','Скрыт. лест.'],['gold','Золото'],['guard','Охранник'],['respawn','Восстан.'],['exit','Выход'],['spawn','Старт']];
+  const row=$('brushRow');
+  for(const [b,label] of brushes){
+    const btn=document.createElement('button');
+    btn.className='btn small brush'+(b===ED.brush?' sel':''); btn.textContent=label;
+    btn.addEventListener('click',()=>{ ED.brush=b; for(const x of row.children)x.classList.remove('sel'); btn.classList.add('sel'); AudioSys.click(); });
+    row.appendChild(btn);
+  }
+  const cv=$('editorCanvas');
+  let painting=false;
+  const cellAt=e=>{ const rc=cv.getBoundingClientRect();
+    return [Math.floor((e.clientX-rc.left)/ED.EC), Math.floor((e.clientY-rc.top)/ED.EC)]; };
+  cv.addEventListener('pointerdown',e=>{ e.preventDefault(); cv.setPointerCapture(e.pointerId); painting=true;
+    const [c,r]=cellAt(e); if(c>=0&&c<CFG.W&&r>=0&&r<CFG.H){ edApply(c,r); $('editorCoord').textContent='Клетка ('+c+','+r+')'; } });
+  cv.addEventListener('pointermove',e=>{ const [c,r]=cellAt(e);
+    if(c>=0&&c<CFG.W&&r>=0&&r<CFG.H) $('editorCoord').textContent='Клетка ('+c+','+r+')';
+    if(painting&&c>=0&&c<CFG.W&&r>=0&&r<CFG.H) edApply(c,r); });
+  cv.addEventListener('pointerup',()=>painting=false);
+  $('edUndo').addEventListener('click',()=>{ if(!ED.undo.length)return; ED.redo.push(JSON.stringify(ED.lv)); ED.lv=JSON.parse(ED.undo.pop()); drawEditor(); });
+  $('edRedo').addEventListener('click',()=>{ if(!ED.redo.length)return; ED.undo.push(JSON.stringify(ED.lv)); ED.lv=JSON.parse(ED.redo.pop()); drawEditor(); });
+  $('edNew').addEventListener('click',()=>{ ED.lv=blankLevel(); ED.undo=[];ED.redo=[]; showEditor(); });
+  $('edValidate').addEventListener('click',()=>{ const e=validateLevel(ED.lv); edMsg(e.length?e:['Карта корректна']); });
+  $('edTest').addEventListener('click',()=>{
+    const e=validateLevel(ED.lv);
+    if(e.length){ edMsg(e); return; }
+    edMsg([]);
+    game.startLevel(JSON.parse(JSON.stringify(ED.lv)),'editorTest',$('menuDiff').value);
+    hideOverlays(); showScreen('game');
+  });
+  $('edBack').addEventListener('click',()=>{ showEditor(); });
+  $('edSave').addEventListener('click',()=>{
+    ED.lv.title=$('edTitle').value||'Мой уровень'; ED.lv.theme=$('edTheme').value;
+    const e=validateLevel(ED.lv); if(e.length){ edMsg(e); return; }
+    progress.customs=progress.customs.filter(c=>c.id!==ED.lv.id);
+    progress.customs.unshift(JSON.parse(JSON.stringify(ED.lv)));
+    if(progress.customs.length>20) progress.customs.pop();
+    saveAll(); renderCustoms(); edMsg(['Сохранено: '+ED.lv.title]);
+  });
+  $('edExport').addEventListener('click',()=>{
+    const blob=new Blob([JSON.stringify(ED.lv,null,1)],{type:'application/json'});
+    const url=URL.createObjectURL(blob); const a=document.createElement('a');
+    a.href=url; a.download=(ED.lv.title||'level')+'.json'; a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  });
+  $('edImport').addEventListener('click',()=>$('edFile').click());
+  $('edFile').addEventListener('change',e=>{
+    const f=e.target.files[0]; if(!f) return;
+    if(f.size>256*1024){ edMsg(['Файл больше 256 КБ']); return; }
+    const rd=new FileReader();
+    rd.onload=()=>{
+      try{
+        const d=JSON.parse(rd.result);
+        const errs=importCheck(d);
+        if(errs.length){ edMsg(errs); return; }
+        ED.lv=d; ED.undo=[];ED.redo=[]; showEditor(); edMsg(['Импортировано: '+(d.title||'')]);
+      }catch(err){ edMsg(['Некорректный JSON']); }
+      e.target.value='';
+    };
+    rd.readAsText(f);
+  });
+  $('edTitle').addEventListener('input',()=>{ ED.lv.title=$('edTitle').value; });
+  $('edTheme').addEventListener('change',()=>{ ED.lv.theme=$('edTheme').value; });
+}
+function importCheck(d){
+  const errs=[];
+  if(!d||d.schemaVersion!==1) errs.push('schemaVersion должен быть 1');
+  if(!Array.isArray(d.terrain)||d.terrain.length!==CFG.H) errs.push('terrain: нужно 16 строк');
+  if(!Array.isArray(d.fixtures)||d.fixtures.length!==CFG.H) errs.push('fixtures: нужно 16 строк');
+  if(!errs.length){
+    for(let r=0;r<CFG.H;r++){
+      if(d.terrain[r].length!==CFG.W||d.fixtures[r].length!==CFG.W) errs.push('строка '+r+': нужно 28 значений');
+      for(let c=0;c<CFG.W;c++){
+        if(!Number.isInteger(d.terrain[r][c])||d.terrain[r][c]<0||d.terrain[r][c]>3) errs.push('terrain['+r+']['+c+'] недопустим');
+        if(!Number.isInteger(d.fixtures[r][c])||d.fixtures[r][c]<0||d.fixtures[r][c]>3) errs.push('fixtures['+r+']['+c+'] недопустим');
+      }
+    }
+    if(!d.playerSpawn||!Number.isInteger(d.playerSpawn.c)||!Number.isInteger(d.playerSpawn.r)) errs.push('playerSpawn отсутствует');
+    for(const k of ['guards','respawnPoints','gold','exits'])
+      if(!Array.isArray(d[k])) errs.push(k+' должен быть массивом');
+    if(Array.isArray(d.gold)&&d.gold.length>100) errs.push('больше 100 слитков');
+    if(Array.isArray(d.guards)&&d.guards.length>6) errs.push('больше 6 охранников');
+    const ids=new Set();
+    for(const g of (d.gold||[])){ if(ids.has(g.id))errs.push('повторный ID золота '+g.id); ids.add(g.id); }
+    if(!errs.length){ const v=validateLevel(d); errs.push(...v); }
+  }
+  return errs;
+}
+function renderCustoms(){
+  const list=$('customList'); list.textContent='';
+  for(const c of progress.customs){
+    const b=document.createElement('button'); b.className='btn small'; b.textContent=c.title||c.id;
+    b.addEventListener('click',()=>{ ED.lv=JSON.parse(JSON.stringify(c)); showEditor(); });
+    const d=document.createElement('button'); d.className='btn small'; d.textContent='✕';
+    d.addEventListener('click',()=>{ progress.customs=progress.customs.filter(x=>x.id!==c.id); saveAll(); renderCustoms(); });
+    list.append(b,d);
+  }
+}
+function editorTestEnd(){
+  game.state='MENU';
+  showEditor();
+  toast('Тест завершён — авторская карта не изменена');
+}
+
+// ============ Запуск ============
+function boot(){
+  loadAll();
+  renderer=new Renderer($('gameCanvas'));
+  renderer.setQuality(settings.quality);
+  Input.init(); initEditorUI();
+  $('setSfx').value=settings.sfx; $('setMusic').value=settings.music;
+  $('setQuality').value=settings.quality; $('setShake').checked=settings.shake;
+  $('btnContinue').disabled = progress.unlocked===0;
+  const gesture=()=>{ AudioSys.ensure(); AudioSys.startMusic(); };
+  document.addEventListener('pointerdown',gesture,{once:true});
+  document.addEventListener('keydown',gesture,{once:true});
+  $('btnNew').addEventListener('click',()=>{ AudioSys.click(); showScreen('tutorial'); });
+  $('btnTutOk').addEventListener('click',()=>{ AudioSys.click(); startCampaign(0); });
+  $('btnContinue').addEventListener('click',()=>{
+    AudioSys.click();
+    game.levelIndex=progress.lastLevel||0;
+    game.score=progress.score||0; game.lives=Math.max(1,progress.lives||CFG.LIVES_START);
+    game.startLevel(parseLevel(LEVELS[game.levelIndex]),'campaign',$('menuDiff').value);
+    hideOverlays(); showScreen('game');
+  });
+  $('btnPractice').addEventListener('click',()=>{ AudioSys.click(); buildLevelGrid('practice'); $('levelsTitle').textContent='Практика'; showScreen('levels'); });
+  $('btnEditor').addEventListener('click',()=>{ AudioSys.click(); showEditor(); });
+  $('btnSettings').addEventListener('click',()=>{ AudioSys.click(); showScreen('settings'); });
+  $('btnSettingsBack').addEventListener('click',()=>{
+    settings.sfx=+$('setSfx').value; settings.music=+$('setMusic').value;
+    settings.quality=$('setQuality').value; settings.shake=$('setShake').checked;
+    AudioSys.applyVolumes(); renderer.setQuality(settings.quality); saveAll(); showScreen('menu');
+  });
+  $('btnLevelsBack').addEventListener('click',()=>showScreen('menu'));
+  $('btnEditorBack').addEventListener('click',()=>{ game.state='MENU'; showScreen('menu'); });
+  $('hudPause').addEventListener('click',togglePause);
+  $('btnResume').addEventListener('click',togglePause);
+  $('btnRestart').addEventListener('click',()=>{
+    if(game.mode==='campaign'){ game.lives--; if(game.lives<=0){ hideOverlays(); game.state='GAME_OVER'; onGameOver(); return; } }
+    game.restartAttempt(); hideOverlays();
+  });
+  $('btnQuit').addEventListener('click',()=>{ game.state='MENU'; hideOverlays(); showScreen('menu'); });
+  $('btnNextLevel').addEventListener('click',()=>{
+    game.levelIndex++;
+    game.startLevel(parseLevel(LEVELS[game.levelIndex]),'campaign',game.difficulty);
+    hideOverlays(); showScreen('game');
+  });
+  $('btnLevelMenu').addEventListener('click',()=>{ game.state='MENU'; hideOverlays(); showScreen('menu'); });
+  $('btnGoMenu').addEventListener('click',()=>{ game.state='MENU'; hideOverlays(); showScreen('menu'); });
+  $('btnCampMenu').addEventListener('click',()=>{ game.state='MENU'; hideOverlays(); showScreen('menu'); });
+  requestAnimationFrame(t=>{ last=t; requestAnimationFrame(frame); });
+}
+window.__ORE__={CFG,T,F,LEVELS,parseLevel,validateLevel,World,Player,Guard,Navigation,Game,game};
+if (typeof document!=='undefined' && document.getElementById('gameCanvas')) boot();
+</script>
+</body>
+</html>

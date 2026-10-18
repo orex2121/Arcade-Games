@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>GALAXIAN: NEON STORM</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#04040f; }
+  canvas { display:block; }
+  .overlay.hidden { display:none; }
+  .overlay {
+    position:fixed; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; background:rgba(4,4,15,.85);
+    pointer-events:auto; cursor:pointer; z-index:10;
+  }
+  h1 {
+    font-size:64px; letter-spacing:12px; color:#fff;
+    text-shadow:0 0 20px #0ff, 0 0 40px #f0f, 0 0 80px #0ff;
+    animation:pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.7} }
+  .sub { color:#8df; margin-top:20px; font-size:16px; letter-spacing:3px; }
+  .ctrl { color:#557; margin-top:40px; font-size:13px; line-height:2; text-align:center; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div class="overlay" id="menu">
+  <h1>GALAXIAN</h1>
+  <div class="sub" style="color:#f6f; text-shadow:0 0 15px #f0f;">NEON STORM</div>
+  <div class="ctrl">
+    ← → / A D — движение &nbsp;|&nbsp; ПРОБЕЛ / КЛИК — огонь<br>
+    S — пауза &nbsp;|&nbsp; собирай бонусы, не давай флоту дойти до земли
+  </div>
+  <div class="sub" style="margin-top:30px; animation:pulse 1.5s infinite;">[ НАЖМИ, ЧТОБЫ ИГРАТЬ ]</div>
+</div>
+
+<div class="overlay hidden" id="gameover">
+  <h1 style="color:#f44; text-shadow:0 0 30px #f00;">GAME OVER</h1>
+  <div class="sub" id="finalScore" style="margin-top:30px; font-size:28px;"></div>
+  <div class="sub" style="margin-top:30px; animation:pulse 1.5s infinite;">[ НАЖМИ ДЛЯ РЕСТАРТА ]</div>
+</div>
+
+<script>
+(() => {
+"use strict";
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resize(){ W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+addEventListener('resize', resize); resize();
+
+/* ================= AUDIO (WebAudio, без файлов) ================= */
+let AC = null;
+function audio(){ if(!AC) AC = new (window.AudioContext||window.webkitAudioContext)(); }
+function beep(f, dur, type='square', vol=0.08, slide=0){
+  if(!AC) return;
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, AC.currentTime);
+  if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, f+slide), AC.currentTime+dur);
+  g.gain.setValueAtTime(vol, AC.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, AC.currentTime+dur);
+  o.connect(g).connect(AC.destination);
+  o.start(); o.stop(AC.currentTime+dur);
+}
+const SFX = {
+  shoot:   () => beep(880, .08, 'square', .04, -500),
+  enemyDie:() => { beep(200,.2,'sawtooth',.1,-150); beep(90,.3,'triangle',.1,-40); },
+  boom:    () => { beep(80,.5,'sawtooth',.2,-50); beep(40,.6,'triangle',.25,-20); },
+  hurt:    () => beep(150,.4,'sawtooth',.2,-100),
+  power:   () => { beep(523,.1,'square',.08); setTimeout(()=>beep(659,.1,'square',.08),80); setTimeout(()=>beep(784,.15,'square',.08),160); },
+  bossDie: () => { beep(60,1,'sawtooth',.3,-30); beep(120,.8,'square',.2,-90); },
+  wave:    () => { beep(392,.15,'square',.07); setTimeout(()=>beep(523,.2,'square',.07),150); }
+};
+
+/* ================= INPUT ================= */
+const keys = {};
+let mouseDown = false, mouseX = null;
+addEventListener('keydown', e => { keys[e.code]=true; if(e.code==='Space') e.preventDefault(); });
+addEventListener('keyup',   e => keys[e.code]=false);
+canvas.addEventListener('mousedown', () => mouseDown = true);
+addEventListener('mouseup', () => mouseDown = false);
+canvas.addEventListener('mousemove', e => mouseX = e.clientX);
+
+/* ================= STATE ================= */
+const G = {
+  running:false, paused:false, score:0, lives:3, wave:0,
+  combo:0, comboTimer:0, shake:0, time:0,
+  state:'idle', introTimer:0,
+  player:{ x:0, y:0, inv:0, fireCd:0, triple:0, shield:false, shieldTimer:0 },
+  bullets:[], ebullets:[], enemies:[], powerups:[], particles:[],
+  boss:null, formation:{ baseY:0, t:0, dropSpeed:0 }
+};
+const ENEMY_TYPES = [
+  { color:'#ff3355', glow:'#ff5577', points:100, r:15 },
+  { color:'#ffaa00', glow:'#ffcc44', points:50,  r:14 },
+  { color:'#00ffcc', glow:'#44ffee', points:30,  r:13 }
+];
+
+const stars = Array.from({length:140}, (_,i)=>({
+  x:Math.random(), y:Math.random(),
+  s:(i%3)+0.5, sp:(i%3)*0.4+0.2, tw:Math.random()*Math.PI*2
+}));
+
+/* ================= PARTICLES ================= */
+function explode(x,y,color,n=18,power=1){
+  for(let i=0;i<n;i++){
+    const a = Math.random()*Math.PI*2, v = (Math.random()*4+1)*power;
+    G.particles.push({ x, y, vx:Math.cos(a)*v, vy:Math.sin(a)*v,
+      life:1, decay:0.015+Math.random()*0.02, color, size:Math.random()*3+1 });
+  }
+}
+
+/* ================= WAVE / FORMATION ================= */
+function startWave(){
+  G.wave++;
+  G.state = 'intro';
+  G.introTimer = 120;
+  G.bullets.length = 0; G.ebullets.length = 0; G.powerups.length = 0;
+  G.formation = { baseY:-160, t:0, dropSpeed:0.35 + G.wave*0.05 };
+
+  if(G.wave % 5 === 0){                    // Босс
+    G.enemies.length = 0;
+    G.boss = {
+      x: W/2, y: -80, targetY: 130, w:150, h:60,
+      hp: 30 + G.wave*8, maxHp: 30 + G.wave*8,
+      t:0, fireCd:90, dir:1, phase:0
+    };
+  } else {                                 // Флот
+    G.enemies.length = 0;
+    const cols = 8, rows = Math.min(3 + Math.floor(G.wave/2), 6);
+    const gx = Math.min((W-200)/(cols-1), 80);
+    for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
+      const type = r===0 ? 0 : (r<3 ? 1 : 2);
+      const x = W/2 + (c-(cols-1)/2)*gx;
+      G.enemies.push({
+        col:c, row:r, type,
+        x, homeX: x,           // позиция в строю, для возвращения ныряльщика
+        baseY: r*42, y:0,
+        dive:false, dvx:0, dvy:0, wavePh:Math.random()*Math.PI*2,
+        shootCd: 120 + Math.random()*400
+      });
+    }
+  }
+  SFX.wave();
+}
+
+/* ================= UPDATE ================= */
+function update(){
+  G.time++;
+  if(G.paused || !G.running) return;
+  const P = G.player;
+  P.y = H - 80;
+  if(P.shield && P.shieldTimer>0 && --P.shieldTimer===0) P.shield=false;
+
+  // движение игрока
+  const spd = 7;
+  if(keys['ArrowLeft']||keys['KeyA']) P.x -= spd;
+  if(keys['ArrowRight']||keys['KeyD']) P.x += spd;
+  if(mouseX !== null) P.x += (mouseX - P.x)*0.15;
+  P.x = Math.max(30, Math.min(W-30, P.x));
+  if(P.inv>0) P.inv--;
+  if(P.triple>0) P.triple--;
+
+  // стрельба
+  P.fireCd--;
+  if((keys['Space']||mouseDown) && P.fireCd<=0){
+    P.fireCd = 11;
+    G.bullets.push({x:P.x, y:P.y-22, vy:-10, vx:0});
+    if(P.triple){
+      G.bullets.push({x:P.x-10, y:P.y-14, vy:-10, vx:-1.5});
+      G.bullets.push({x:P.x+10, y:P.y-14, vy:-10, vx:1.5});
+    }
+    SFX.shoot();
+  }
+
+  // комбо таймер
+  if(G.comboTimer>0){ G.comboTimer--; if(G.comboTimer===0) G.combo=0; }
+
+  // состояние волны
+  if(G.state==='intro'){
+    if(--G.introTimer===0) G.state='fight';
+  } else if(G.state==='fight'){
+    if(G.boss) updateBoss(); else updateFormation();
+  }
+  if(G.state==='fight' && !G.boss && G.enemies.length===0) startWave();
+
+  // пули игрока
+  for(let i=G.bullets.length-1;i>=0;i--){
+    const b = G.bullets[i];
+    b.y += b.vy; b.x += b.vx||0;
+    if(b.y < -20){ G.bullets.splice(i,1); continue; }
+    if(G.boss && Math.abs(b.x-G.boss.x)<G.boss.w/2 && Math.abs(b.y-G.boss.y)<G.boss.h/2){
+      G.boss.hp--; G.bullets.splice(i,1);
+      explode(b.x,b.y,'#ff88ff',4,.5);
+      if(G.boss.hp<=0){
+        explode(G.boss.x,G.boss.y,'#ff88ff',60,2.5);
+        G.shake = 25; G.score += 2000; SFX.bossDie(); G.boss = null;
+      }
+      continue;
+    }
+    for(let j=G.enemies.length-1;j>=0;j--){
+      const e = G.enemies[j];
+      if(Math.hypot(b.x-e.x, b.y-e.y) < 18){
+        G.bullets.splice(i,1);
+        killEnemy(j);
+        break;
+      }
+    }
+  }
+
+  // враги
+  for(let i=G.enemies.length-1;i>=0;i--){
+    const e = G.enemies[i];
+    if(e.dive){
+      e.x += e.dvx; e.y += e.dvy;
+      if(e.y > H+40){
+        // ныряльщик улетел вниз — возвращается в строй сверху
+        e.dive = false;
+        e.x = e.homeX;
+        e.shootCd = 300 + Math.random()*300;
+      }
+    } else {
+      e.y = G.formation.baseY + e.baseY + Math.sin(G.formation.t + e.wavePh)*8;
+    }
+    if(G.state==='fight' && --e.shootCd<=0){
+      e.shootCd = 200 + Math.random()*400;
+      G.ebullets.push({ x:e.x, y:e.y, vy:3+G.wave*0.15, w:Math.sin(G.time*0.2+e.wavePh)>0?1:-1, ph:0 });
+    }
+    // столкновение с кораблём игрока: точный хитбокс по корпусу
+    if(P.inv===0 &&
+       Math.abs(e.x-P.x)<20 &&
+       e.y > P.y-22 && e.y < P.y+16){
+      G.enemies.splice(i,1);
+      explode(e.x,e.y,ENEMY_TYPES[e.type].color,15);
+      hurtPlayer();
+    }
+  }
+
+  // пули врагов
+  for(let i=G.ebullets.length-1;i>=0;i--){
+    const b = G.ebullets[i];
+    const prevY = b.y;
+    b.y += b.vy; b.ph += 0.15; b.x += Math.sin(b.ph)*2*b.w;
+    if(b.y > H+20){ G.ebullets.splice(i,1); continue; }
+    // хитбокс повторяет корпус: x ±14, y от P.y-20 (нос) до P.y+14 (киль)
+    if(P.inv===0 &&
+       Math.abs(b.x - P.x) < 14 &&
+       Math.min(prevY, b.y) > P.y - 20 &&
+       Math.max(prevY, b.y) < P.y + 14){
+      G.ebullets.splice(i,1);
+      hurtPlayer();
+    }
+  }
+
+  // флот достиг земли — поражение
+  if(!G.boss && G.state==='fight' && G.enemies.length){
+    const lowest = Math.max(...G.enemies.map(e=>e.y));
+    if(lowest > H-130){ G.shake = 20; gameOver(); return; }
+  }
+
+  // бонусы
+  for(let i=G.powerups.length-1;i>=0;i--){
+    const p = G.powerups[i];
+    p.y += 2; p.ph += 0.1;
+    if(p.y > H+20){ G.powerups.splice(i,1); continue; }
+    if(Math.abs(p.x-P.x)<30 && Math.abs(p.y-P.y)<30){
+      G.powerups.splice(i,1); SFX.power();
+      if(p.kind==='T') P.triple = 600;
+      if(p.kind==='S'){ P.shield = true; P.shieldTimer = 600; }
+      if(p.kind==='B'){
+        G.shake = 20;
+        G.enemies.forEach(e=>explode(e.x,e.y,ENEMY_TYPES[e.type].color,10));
+        G.enemies.length = 0; G.ebullets.length = 0; G.score += 500;
+      }
+    }
+  }
+
+  // частицы
+  for(let i=G.particles.length-1;i>=0;i--){
+    const p = G.particles[i];
+    p.x+=p.vx; p.y+=p.vy; p.vy+=0.03; p.life-=p.decay;
+    if(p.life<=0) G.particles.splice(i,1);
+  }
+
+  if(G.shake>0) G.shake *= 0.88;
+}
+
+function killEnemy(j){
+  const e = G.enemies[j];
+  explode(e.x, e.y, ENEMY_TYPES[e.type].color, 16);
+  G.combo++; G.comboTimer = 150;
+  const mult = 1 + Math.floor(G.combo/5);
+  G.score += ENEMY_TYPES[e.type].points * mult;
+  SFX.enemyDie();
+  if(Math.random() < 0.08)
+    G.powerups.push({ x:e.x, y:e.y, kind:['T','S','B'][Math.floor(Math.random()*3)], ph:0 });
+  G.enemies.splice(j,1);
+}
+
+function hurtPlayer(){
+  const P = G.player;
+  if(P.shield){ P.shield=false; P.shieldTimer=0; P.inv=90; SFX.hurt(); G.shake=8; return; }
+  G.lives--; G.combo = 0; G.shake = 15; P.inv = 120;
+  explode(P.x, P.y, '#ffffff', 30, 1.5);
+  SFX.hurt();
+  if(G.lives <= 0) gameOver();
+}
+
+function updateFormation(){
+  G.formation.t += 0.03;
+  G.formation.baseY += G.formation.dropSpeed;
+  if(G.time % 90 === 0 && G.enemies.length > 2 && Math.random() < 0.4){
+    const alive = G.enemies.filter(e=>!e.dive);
+    if(alive.length){
+      const e = alive[Math.floor(Math.random()*alive.length)];
+      e.dive = true;
+      e.dvx = (e.x < W/2 ? -1 : 1) * (1.5 + Math.random());
+      e.dvy = 2.5 + G.wave*0.2;
+    }
+  }
+}
+
+function updateBoss(){
+  const B = G.boss;
+  B.t++;
+  if(B.y < B.targetY) B.y += 2; else B.x += 2.5 * B.dir;
+  if(B.x < W/2-300 || B.x > W/2+300) B.dir *= -1;
+  if(--B.fireCd <= 0){
+    B.fireCd = Math.max(30, 90 - G.wave*2);
+    B.phase = (B.phase+1)%3;
+    if(B.phase===0){
+      for(let k=-2;k<=2;k++) G.ebullets.push({x:B.x+k*25, y:B.y+30, vy:3.5, w:0, ph:k});
+    } else if(B.phase===1){
+      G.ebullets.push({x:B.x-50, y:B.y+30, vy:4, w:2, ph:0});
+      G.ebullets.push({x:B.x+50, y:B.y+30, vy:4, w:-2, ph:0});
+    } else {
+      const dx = G.player.x-B.x, dy = G.player.y-B.y, d = Math.hypot(dx,dy);
+      for(let k=-1;k<=1;k++)
+        G.ebullets.push({x:B.x, y:B.y+30, vy:(dy/d)*5 + k, w:(dx/d)*3 + k*0.5, ph:0});
+    }
+  }
+}
+
+function gameOver(){
+  G.running = false;
+  SFX.boom();
+  document.getElementById('finalScore').textContent = 'СЧЁТ: ' + G.score + '  •  ВОЛНА: ' + G.wave;
+  document.getElementById('gameover').classList.remove('hidden');
+}
+
+/* ================= DRAW ================= */
+function drawGalaxian(r){
+  ctx.beginPath();
+  ctx.moveTo(0, r); ctx.lineTo(-r*0.7, r*0.4); ctx.lineTo(-r, -r*0.2);
+  ctx.lineTo(-r*0.5, -r*0.8); ctx.lineTo(-r*0.3, -r*0.3); ctx.lineTo(0, -r);
+  ctx.lineTo(r*0.3, -r*0.3); ctx.lineTo(r*0.5, -r*0.8); ctx.lineTo(r, -r*0.2);
+  ctx.lineTo(r*0.7, r*0.4);
+  ctx.closePath(); ctx.fill();
+  ctx.shadowBlur = 0; ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(0, 0, r*0.25, 0, Math.PI*2); ctx.fill();
+}
+
+function draw(){
+  ctx.fillStyle = '#04040f';
+  ctx.fillRect(0,0,W,H);
+
+  ctx.save();
+  if(G.shake>0.5)
+    ctx.translate((Math.random()-0.5)*G.shake, (Math.random()-0.5)*G.shake);
+
+  // звёзды
+  stars.forEach(s=>{
+    s.y += s.sp*0.001 * (G.running?1:0.3);
+    if(s.y>1) s.y=0;
+    const tw = 0.4 + 0.6*Math.abs(Math.sin(G.time*0.02 + s.tw));
+    ctx.globalAlpha = tw*0.8;
+    ctx.fillStyle = s.s>2 ? '#aaf' : '#668';
+    ctx.fillRect(s.x*W, s.y*H, s.s, s.s);
+  });
+  ctx.globalAlpha = 1;
+
+  // бонусы
+  G.powerups.forEach(p=>{
+    const bob = Math.sin(p.ph)*4;
+    ctx.save();
+    ctx.translate(p.x, p.y+bob);
+    ctx.shadowBlur = 15;
+    const c = {T:'#ff8800', S:'#4488ff', B:'#ff4488'}[p.kind];
+    ctx.shadowColor = c; ctx.fillStyle = c;
+    ctx.beginPath(); ctx.arc(0,0,12,0,Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0; ctx.fillStyle = '#000'; ctx.font = 'bold 14px monospace';
+    ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(p.kind,0,1);
+    ctx.restore();
+  });
+
+  // враги
+  G.enemies.forEach(e=>{
+    const T = ENEMY_TYPES[e.type];
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    ctx.shadowBlur = 12; ctx.shadowColor = T.glow;
+    ctx.fillStyle = T.color;
+    drawGalaxian(T.r);
+    ctx.restore();
+  });
+
+  // босс
+  if(G.boss){
+    const B = G.boss;
+    ctx.save();
+    ctx.translate(B.x, B.y);
+    ctx.shadowBlur = 25; ctx.shadowColor = '#f0f';
+    ctx.fillStyle = '#ff44aa';
+    ctx.beginPath();
+    ctx.moveTo(0,30); ctx.lineTo(-75,-10); ctx.lineTo(-45,-30);
+    ctx.lineTo(45,-30); ctx.lineTo(75,-10);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(0,-5,12+Math.sin(G.time*0.1)*3,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = 'rgba(255,0,255,0.2)';
+    ctx.fillRect(W/2-200, 40, 400, 8);
+    ctx.fillStyle = '#ff44aa';
+    ctx.fillRect(W/2-200, 40, 400*(B.hp/B.maxHp), 8);
+  }
+
+  // пули
+  ctx.shadowBlur = 10; ctx.shadowColor = '#0ff'; ctx.fillStyle = '#aff';
+  G.bullets.forEach(b => ctx.fillRect(b.x-2, b.y-10, 4, 14));
+  ctx.shadowColor = '#f55'; ctx.fillStyle = '#f88';
+  G.ebullets.forEach(b => { ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, Math.PI*2); ctx.fill(); });
+  ctx.shadowBlur = 0;
+
+  // игрок
+  const P = G.player;
+  if(G.running && !(P.inv>0 && Math.floor(G.time/5)%2===0)){
+    ctx.save();
+    ctx.translate(P.x, P.y);
+    ctx.shadowBlur = 15; ctx.shadowColor = '#0ff';
+    ctx.fillStyle = '#0ef';
+    ctx.beginPath();
+    ctx.moveTo(0,-22); ctx.lineTo(-20,16); ctx.lineTo(-8,10);
+    ctx.lineTo(0,16); ctx.lineTo(8,10); ctx.lineTo(20,16);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = `hsl(${G.time*10%360},100%,60%)`;
+    ctx.beginPath();
+    ctx.moveTo(-5,16); ctx.lineTo(5,16); ctx.lineTo(0, 22+Math.random()*8);
+    ctx.closePath(); ctx.fill();
+    if(P.shield){
+      ctx.strokeStyle = 'rgba(80,140,255,'+(0.4+0.3*Math.sin(G.time*0.2))+')';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0,0,30,0,Math.PI*2); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // частицы
+  G.particles.forEach(p=>{
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x-p.size/2, p.y-p.size/2, p.size, p.size);
+  });
+  ctx.globalAlpha = 1;
+
+  ctx.restore();
+
+  // HUD
+  ctx.font = '18px "Courier New", monospace';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#0ff'; ctx.shadowBlur = 8; ctx.shadowColor = '#0ff';
+  ctx.fillText('SCORE ' + String(G.score).padStart(7,'0'), 20, 32);
+  ctx.fillStyle = '#f8f'; ctx.shadowColor = '#f0f';
+  ctx.fillText('WAVE ' + G.wave, W/2-30, 32);
+  ctx.fillStyle = '#ff5'; ctx.shadowColor = '#fa0';
+  ctx.textAlign = 'right';
+  ctx.fillText('LIVES ' + '●'.repeat(Math.max(0,G.lives)), W-20, 32);
+  if(G.combo >= 5){
+    ctx.textAlign='center'; ctx.fillStyle='#fff'; ctx.shadowColor='#fff';
+    ctx.font = 'bold 24px monospace';
+    ctx.fillText('COMBO ×' + (1+Math.floor(G.combo/5)), W/2, 70);
+  }
+  ctx.shadowBlur = 0;
+
+  if(G.state==='intro' && G.wave>0){
+    ctx.textAlign='center';
+    ctx.font = 'bold 48px monospace';
+    ctx.fillStyle = '#fff'; ctx.shadowBlur=20; ctx.shadowColor='#0ff';
+    ctx.fillText(G.wave%5===0 ? 'BOSS INCOMING' : 'WAVE ' + G.wave, W/2, H/2);
+    ctx.shadowBlur=0;
+  }
+  if(G.paused && G.running){
+    ctx.textAlign='center'; ctx.font='bold 40px monospace';
+    ctx.fillStyle='#fff'; ctx.fillText('ПАУЗА', W/2, H/2);
+  }
+}
+
+/* ================= MAIN LOOP ================= */
+function loop(){
+  if(G.running && keys['KeyS'] && !G._wasS) G.paused = !G.paused;
+  G._wasS = keys['KeyS'];
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function start(){
+  audio();
+  Object.assign(G, {
+    running:true, paused:false, score:0, lives:3, wave:0,
+    combo:0, comboTimer:0, shake:0, time:0, state:'idle', introTimer:0,
+    bullets:[], ebullets:[], enemies:[], powerups:[], particles:[], boss:null,
+    player:{ x:W/2, y:H-80, inv:0, fireCd:0, triple:0, shield:false, shieldTimer:0 }
+  });
+  startWave();
+}
+
+document.getElementById('menu').addEventListener('click', ()=>{
+  document.getElementById('menu').classList.add('hidden');
+  start();
+});
+document.getElementById('gameover').addEventListener('click', ()=>{
+  document.getElementById('gameover').classList.add('hidden');
+  start();
+});
+
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
