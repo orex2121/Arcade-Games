@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>NEON SNAKE</title>
+<style>
+  :root{
+    --bg:#070b16; --panel:rgba(17,24,45,.72); --line:rgba(148,163,255,.14);
+    --cyan:#22d3ee; --violet:#8b5cf6; --emerald:#34d399; --amber:#f59e0b;
+    --rose:#fb7185; --text:#e6ecff; --muted:#8b96b8;
+  }
+  *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+    background:
+      radial-gradient(900px 600px at 15% -10%, rgba(139,92,246,.16), transparent 60%),
+      radial-gradient(900px 600px at 110% 110%, rgba(34,211,238,.12), transparent 60%),
+      var(--bg);
+    color:var(--text); display:flex; align-items:center; justify-content:center;
+    min-height:100vh; padding:16px; user-select:none;
+  }
+  #app{width:min(94vw,560px)}
+  header{display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:14px}
+  h1{
+    font-size:clamp(26px,6vw,36px); font-weight:800; letter-spacing:4px;
+    background:linear-gradient(90deg,var(--cyan),var(--violet));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    text-shadow:0 0 34px rgba(34,211,238,.25);
+  }
+  #levelTag{font-size:12px; letter-spacing:2px; color:var(--muted); text-transform:uppercase; padding-bottom:6px}
+  #hud{display:flex; gap:10px; margin-bottom:12px}
+  .stat{
+    flex:1; background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:8px 14px; backdrop-filter:blur(10px);
+  }
+  .stat .label{font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--muted)}
+  .stat .value{font-size:22px; font-weight:700; font-variant-numeric:tabular-nums}
+  #score .value{color:var(--cyan)} #best .value{color:var(--amber)}
+  #chips{display:flex; gap:8px; flex-wrap:wrap; min-height:28px; margin-bottom:10px}
+  .chip{
+    font-size:12px; padding:4px 12px; border-radius:999px; border:1px solid var(--line);
+    background:var(--panel); backdrop-filter:blur(10px);
+    display:flex; align-items:center; gap:6px; animation:pop .18s ease;
+  }
+  @keyframes pop{from{transform:scale(.7);opacity:0}}
+  #stage{position:relative; border-radius:20px; overflow:hidden;
+    border:1px solid var(--line); box-shadow:0 0 60px rgba(34,211,238,.08), inset 0 0 80px rgba(0,0,0,.5)}
+  canvas{display:block; width:100%; aspect-ratio:1; background:#0a0f1f}
+  #stage.shake{animation:shake .3s}
+  @keyframes shake{20%{transform:translate(-6px,3px)}40%{transform:translate(5px,-4px)}60%{transform:translate(-4px,-2px)}80%{transform:translate(3px,3px)}}
+  .overlay{
+    position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:18px; padding:24px; text-align:center;
+    background:rgba(7,11,22,.78); backdrop-filter:blur(12px); z-index:5;
+  }
+  .overlay.hidden{display:none}
+  .overlay h2{font-size:clamp(22px,5vw,30px); letter-spacing:2px}
+  .subtitle{color:var(--muted); font-size:14px; line-height:1.6; max-width:420px}
+  .cards{display:flex; flex-direction:column; gap:10px; width:min(100%,340px)}
+  .card{
+    display:flex; align-items:center; gap:14px; padding:14px 18px; cursor:pointer; text-align:left;
+    background:var(--panel); border:1px solid var(--line); border-radius:16px; color:var(--text);
+    transition:transform .15s, border-color .15s, box-shadow .15s; font:inherit;
+  }
+  .card:hover{transform:translateY(-2px); border-color:var(--cyan); box-shadow:0 8px 30px rgba(34,211,238,.15)}
+  .card .icon{font-size:26px}
+  .card .name{font-weight:700; font-size:16px}
+  .card .desc{font-size:12px; color:var(--muted)}
+  .card .rec{margin-left:auto; text-align:right; font-size:11px; color:var(--amber)}
+  .btn{
+    padding:13px 34px; border-radius:999px; border:1px solid rgba(34,211,238,.5); cursor:pointer;
+    background:linear-gradient(90deg,rgba(34,211,238,.18),rgba(139,92,246,.18)); color:var(--text);
+    font:inherit; font-weight:700; letter-spacing:2px; text-transform:uppercase; font-size:14px;
+    transition:transform .15s, box-shadow .15s;
+  }
+  .btn:hover{transform:translateY(-2px); box-shadow:0 8px 30px rgba(34,211,238,.25)}
+  .btn.ghost{background:transparent; border-color:var(--line); color:var(--muted)}
+  #finalScore{font-size:56px; font-weight:800; color:var(--cyan); text-shadow:0 0 40px rgba(34,211,238,.4); font-variant-numeric:tabular-nums}
+  #newRecord{display:none; font-size:13px; letter-spacing:3px; color:var(--amber); text-transform:uppercase;
+    animation:pulse 1s infinite alternate}
+  @keyframes pulse{to{opacity:.55}}
+  .meta{display:flex; gap:26px; color:var(--muted); font-size:13px}
+  .meta b{color:var(--text)}
+  .legend{display:flex; flex-wrap:wrap; gap:8px 14px; justify-content:center; font-size:12px; color:var(--muted); max-width:400px}
+  .legend span b{color:var(--text); font-weight:600}
+  footer{display:flex; justify-content:space-between; align-items:center; margin-top:12px; color:var(--muted); font-size:12px}
+  #muteBtn{background:none; border:1px solid var(--line); color:var(--muted); border-radius:999px;
+    padding:6px 14px; cursor:pointer; font:inherit; font-size:12px}
+  #muteBtn:hover{color:var(--text); border-color:var(--cyan)}
+</style>
+</head>
+<body>
+<div id="app">
+  <header><h1>NEON SNAKE</h1><div id="levelTag"></div></header>
+  <div id="hud">
+    <div class="stat" id="score"><div class="label">Счёт</div><div class="value">0</div></div>
+    <div class="stat" id="len"><div class="label">Длина</div><div class="value">3</div></div>
+    <div class="stat" id="best"><div class="label">Рекорд</div><div class="value">0</div></div>
+  </div>
+  <div id="chips"></div>
+  <div id="stage">
+    <canvas id="board"></canvas>
+    <div class="overlay" id="menu">
+      <h2>Выбери сложность</h2>
+      <div class="legend">
+        <span>💎 +50 очков</span><span>⚡ турбо&nbsp;+×2 очки</span><span>🐌 замедление</span>
+        <span>✨ ×2 очки</span><span>🍄 рост</span><span>✂️ укоротить&nbsp;+15</span>
+      </div>
+      <div class="cards">
+        <button class="card" data-level="easy"><span class="icon">🌿</span><span><div class="name">Лёгкий</div><div class="desc">Спокойный темп · очки ×1</div></span><span class="rec"></span></button>
+        <button class="card" data-level="normal"><span class="icon">🔥</span><span><div class="name">Обычный</div><div class="desc">Разгон с каждой едой · очки ×1.5</div></span><span class="rec"></span></button>
+        <button class="card" data-level="hard"><span class="icon">💀</span><span><div class="name">Сложный</div><div class="desc">Быстро и бескомпромиссно · очки ×2</div></span><span class="rec"></span></button>
+      </div>
+    </div>
+    <div class="overlay hidden" id="pauseOv">
+      <h2>Пауза</h2>
+      <div class="subtitle">Пробел или P — продолжить · Esc — в меню</div>
+      <button class="btn" id="resumeBtn">Продолжить</button>
+    </div>
+    <div class="overlay hidden" id="overOv">
+      <div id="newRecord">★ Новый рекорд ★</div>
+      <div id="finalScore">0</div>
+      <div class="meta"><span>Рекорд: <b id="overBest">0</b></span><span>Длина: <b id="overLen">0</b></span></div>
+      <button class="btn" id="againBtn">Играть снова</button>
+      <button class="btn ghost" id="menuBtn">Выбрать уровень</button>
+    </div>
+  </div>
+  <footer><span>← ↑ ↓ → / WASD · пробел — пауза · M — звук</span><button id="muteBtn">🔊 Звук</button></footer>
+</div>
+<script>
+'use strict';
+// ---------- конфиг ----------
+const GRID = 21;
+const LEVELS = {
+  easy:   {label:'Лёгкий',  base:125, accel:.004, min:80, chance:.45, life:8, points:1},
+  normal: {label:'Обычный', base:95,  accel:.008, min:55, chance:.35, life:7, points:1.5},
+  hard:   {label:'Сложный', base:72,  accel:.011, min:45, chance:.30, life:5, points:2},
+};
+const BONUS_TYPES = [
+  {id:'gem',   icon:'💎', color:'#22d3ee', name:'Гем +50'},
+  {id:'turbo', icon:'⚡', color:'#f59e0b', name:'Турбо +25'},
+  {id:'slow',  icon:'🐌', color:'#60a5fa', name:'Замедление'},
+  {id:'mult',  icon:'✨', color:'#e879f9', name:'Очки ×2'},
+  {id:'grow',  icon:'🍄', color:'#34d399', name:'Рост'},
+  {id:'cut',   icon:'✂️', color:'#fb7185', name:'Укоротить +15'},
+];
+
+// ---------- состояние ----------
+let level = 'normal';
+let status = 'menu';           // menu | playing | paused | over
+let snake, prev, dir, dirQueue, food, bonus, grow, foodsEaten;
+let score, gt, acc, lastT, tickMs;
+let turboUntil, slowUntil, multUntil;
+let particles = [], texts = [];
+
+// ---------- DOM ----------
+const $ = id => document.getElementById(id);
+const canvas = $('board'), ctx = canvas.getContext('2d');
+const stage = $('stage');
+const scoreEl=$('score').querySelector('.value'), lenEl=$('len').querySelector('.value'), bestEl=$('best').querySelector('.value');
+const levelTag=$('levelTag'), chips=$('chips');
+
+// ---------- размеры ----------
+let cell = 24;
+function resize(){
+  const w = canvas.clientWidth, dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(w*dpr); canvas.height = Math.round(w*dpr);
+  cell = canvas.width/GRID;
+}
+window.addEventListener('resize', resize);
+
+// ---------- рекорды ----------
+const bestKey = lv => 'snake-best-v1-'+lv;
+const getBest = lv => +localStorage.getItem(bestKey(lv)) || 0;
+function refreshBest(){ bestEl.textContent = getBest(level); }
+function refreshRecs(){
+  for(const b of document.querySelectorAll('.card'))
+    b.querySelector('.rec').textContent = getBest(b.dataset.level) ? '★ '+getBest(b.dataset.level) : '';
+}
+
+// ---------- звук ----------
+let audio, muted = false;
+function beep(f, dur=.08, type='square', vol=.04, slide=0){
+  if(muted) return;
+  try{
+    audio = audio || new (window.AudioContext||window.webkitAudioContext)();
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type=type; o.frequency.value=f;
+    if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(30,f+slide), audio.currentTime+dur);
+    g.gain.setValueAtTime(vol, audio.currentTime);
+    g.gain.exponentialRampToValueAtTime(.0001, audio.currentTime+dur);
+    o.connect(g).connect(audio.destination); o.start(); o.stop(audio.currentTime+dur);
+  }catch(e){}
+}
+const snd = {
+  eat:()=>beep(620,.07,'square',.05,300),
+  bonus:()=>{beep(720,.06,'triangle',.05); setTimeout(()=>beep(980,.09,'triangle',.05),70);},
+  die:()=>beep(220,.4,'sawtooth',.06,-170),
+  ui:()=>beep(440,.05,'sine',.04),
+  level:()=>setTimeout(()=>beep(1240,.08,'triangle',.04),120),
+};
+$('muteBtn').onclick = ()=>{ muted=!muted; $('muteBtn').textContent = muted?'🔇 Звук':'🔊 Звук'; };
+
+// ---------- ввод ----------
+const DIRS = {up:[0,-1], down:[0,1], left:[-1,0], right:[1,0]};
+function pushDir(name){
+  if(status!=='playing') return;
+  const last = dirQueue.length ? dirQueue[dirQueue.length-1] : dir;
+  const d = DIRS[name];
+  if(d[0] === -last[0] && d[1] === -last[1]) return;
+  if(d[0] === last[0] && d[1] === last[1]) return;
+  if(dirQueue.length < 2) dirQueue.push(name);
+}
+const KEYMAP = {ArrowUp:'up',KeyW:'up',ArrowDown:'down',KeyS:'down',ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right'};
+document.addEventListener('keydown', e=>{
+  if(KEYMAP[e.code]){ e.preventDefault(); pushDir(KEYMAP[e.code]); return; }
+  if(e.code==='Space'||e.code==='KeyP'){ e.preventDefault();
+    if(status==='playing') pause(); else if(status==='paused') resume(); }
+  if(e.code==='KeyM') $('muteBtn').click();
+  if(e.code==='Enter'){ if(status==='over') start(level); }
+  if(e.code==='Escape'){ if(status==='playing'||status==='paused') toMenu(); }
+});
+// свайпы
+let tx=null, ty=null;
+canvas.addEventListener('touchstart', e=>{ const t=e.touches[0]; tx=t.clientX; ty=t.clientY; }, {passive:true});
+canvas.addEventListener('touchend', e=>{
+  if(tx===null) return;
+  const dx=e.changedTouches[0].clientX-tx, dy=e.changedTouches[0].clientY-ty;
+  if(Math.max(Math.abs(dx),Math.abs(dy))>24)
+    pushDir(Math.abs(dx)>Math.abs(dy) ? (dx>0?'right':'left') : (dy>0?'down':'up'));
+  tx=ty=null;
+}, {passive:true});
+// ---------- игровые команды ----------
+function freeCell(){
+  const taken = new Set(snake.map(s=>s.x+','+s.y));
+  if(food) taken.add(food.x+','+food.y);
+  if(bonus) taken.add(bonus.x+','+bonus.y);
+  const free = [];
+  for(let y=0;y<GRID;y++) for(let x=0;x<GRID;x++)
+    if(!taken.has(x+','+y)) free.push({x,y});
+  return free.length ? free[Math.floor(Math.random()*free.length)] : null;
+}
+function start(lv){
+  level = lv;
+  snake = [{x:10,y:10},{x:9,y:10},{x:8,y:10}];
+  prev = snake.map(p=>({...p}));
+  dir = DIRS.right; dirQueue = [];
+  score = 0; grow = 0; foodsEaten = 0; gt = 0; acc = 0; lastT = performance.now();
+  turboUntil = slowUntil = multUntil = -1;
+  particles = []; texts = []; bonus = null;
+  food = {x:14,y:10};
+  status = 'playing';
+  levelTag.textContent = LEVELS[lv].label;
+  $('menu').classList.add('hidden'); $('overOv').classList.add('hidden'); $('pauseOv').classList.add('hidden');
+  refreshBest(); updateHud(); snd.ui();
+}
+function pause(){ status='paused'; $('pauseOv').classList.remove('hidden'); snd.ui(); }
+function resume(){ if(status!=='paused')return; status='playing'; lastT=performance.now(); $('pauseOv').classList.add('hidden'); snd.ui(); }
+function toMenu(){
+  status='menu'; refreshRecs();
+  $('pauseOv').classList.add('hidden'); $('overOv').classList.add('hidden'); $('menu').classList.remove('hidden');
+}
+function gameOver(){
+  status='over'; snd.die();
+  stage.classList.remove('shake'); void stage.offsetWidth; stage.classList.add('shake');
+  const best = getBest(level);
+  const rec = score > best;
+  if(rec){ localStorage.setItem(bestKey(level), score); snd.level(); }
+  $('finalScore').textContent = score;
+  $('overBest').textContent = Math.max(best, score);
+  $('overLen').textContent = snake.length;
+  $('newRecord').style.display = rec ? 'block' : 'none';
+  $('overOv').classList.remove('hidden');
+  refreshBest();
+}
+
+// ---------- эффекты и очки ----------
+const lvl = () => LEVELS[level];
+const pts = v => Math.round(v * lvl().points * (gt < multUntil ? 2 : 1));
+const addText = (cx,cy,str,color) => texts.push({x:cx, y:cy, str, color, t:0});
+function burst(cx,cy,color,n=14){
+  for(let i=0;i<n;i++){
+    const a = Math.random()*Math.PI*2, sp = .3+Math.random()*1.2;
+    particles.push({x:cx, y:cy, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, t:0, life:.5+Math.random()*.4, color});
+  }
+}
+
+// ---------- шаг змейки ----------
+function step(){
+  if(dirQueue.length) dir = DIRS[dirQueue.shift()];
+  prev = snake.map(p=>({...p}));
+  const head = {x:snake[0].x+dir[0], y:snake[0].y+dir[1]};
+
+  // столкновение со стеной
+  if(head.x<0 || head.y<0 || head.x>=GRID || head.y>=GRID){
+    snake.unshift(head); return gameOver();
+  }
+  // столкновение с телом (хвост освобождается, если не растём)
+  const body = grow>0 ? snake : snake.slice(0,-1);
+  if(body.some(s=>s.x===head.x && s.y===head.y)){
+    snake.unshift(head); return gameOver();
+  }
+  snake.unshift(head);
+  if(grow>0) grow--; else snake.pop();
+
+  // еда
+  if(head.x===food.x && head.y===food.y){
+    const p = pts(10);
+    score += p; foodsEaten++; grow += 2;
+    addText(head.x, head.y, '+'+p, '#34d399');
+    burst((head.x+.5)*cell, (head.y+.5)*cell, '#34d399');
+    snd.eat();
+    food = freeCell() || {x:-9,y:-9};
+    if(!bonus && Math.random() < lvl().chance){
+      const c = freeCell(), t = BONUS_TYPES[Math.floor(Math.random()*BONUS_TYPES.length)];
+      if(c) bonus = {...c, type:t, expires: gt + lvl().life};
+    }
+  }
+  // бонус
+  if(bonus && head.x===bonus.x && head.y===bonus.y){
+    applyBonus(bonus, head);
+  }
+  updateHud();
+}
+function applyBonus(b, head){
+  const cx=(b.x+.5)*cell, cy=(b.y+.5)*cell, id=b.type.id, col=b.type.color;
+  burst(cx, cy, col, 22); snd.bonus();
+  if(id==='gem'){ const p=pts(50); score+=p; addText(b.x,b.y,'+'+p,col); }
+  if(id==='turbo'){ turboUntil = gt+5; const p=pts(25); score+=p; addText(b.x,b.y,'+'+p+' ТУРБО',col); }
+  if(id==='slow'){ slowUntil = gt+6; addText(b.x,b.y,'ЗАМЕДЛЕНИЕ',col); }
+  if(id==='mult'){ multUntil = gt+8; addText(b.x,b.y,'ОЧКИ ×2',col); }
+  if(id==='grow'){ grow += 3; addText(b.x,b.y,'+ДЛИНА',col); }
+  if(id==='cut'){
+    for(let i=0;i<3 && snake.length>4;i++) snake.pop();
+    const p=pts(15); score+=p; addText(b.x,b.y,'+'+p,col);
+  }
+  bonus = null;
+}
+function computeTick(){
+  let t = Math.max(lvl().min, lvl().base * Math.pow(1-lvl().accel, foodsEaten));
+  if(gt < turboUntil) t /= 1.35;
+  if(gt < slowUntil)  t *= 1.45;
+  tickMs = t;
+}
+// ---------- HUD ----------
+function updateHud(){
+  scoreEl.textContent = score;
+  lenEl.textContent = snake ? snake.length : 0;
+}
+function updateChips(){
+  const list = [];
+  if(gt < turboUntil) list.push(['⚡','Турбо '+Math.ceil(turboUntil-gt)+'с','#f59e0b']);
+  if(gt < slowUntil)  list.push(['🐌','Спокойно '+Math.ceil(slowUntil-gt)+'с','#60a5fa']);
+  if(gt < multUntil)  list.push(['✨','×2 очки '+Math.ceil(multUntil-gt)+'с','#e879f9']);
+  chips.innerHTML = list.map(([i,t,c]) =>
+    `<span class="chip" style="border-color:${c}66;color:${c}">${i} ${t}</span>`).join('');
+}
+
+// ---------- отрисовка ----------
+function drawBoard(now){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  // точки сетки
+  ctx.fillStyle = 'rgba(148,163,255,.07)';
+  for(let y=0;y<=GRID;y++) for(let x=0;x<=GRID;x++){
+    if((x+y)%2) continue;
+    ctx.fillRect(x*cell-1, y*cell-1, 2, 2);
+  }
+  if(!snake) return;
+
+  // еда — пульсирующая
+  if(food && food.x>=0){
+    const fx=(food.x+.5)*cell, fy=(food.y+.5)*cell;
+    const r = cell*(0.30 + 0.045*Math.sin(now/160));
+    const gr = ctx.createRadialGradient(fx-r*.3, fy-r*.3, r*.15, fx, fy, r*1.6);
+    gr.addColorStop(0,'#ffd9c9'); gr.addColorStop(.35,'#fb7185'); gr.addColorStop(1,'rgba(251,113,133,0)');
+    ctx.fillStyle = gr;
+    ctx.beginPath(); ctx.arc(fx, fy, r*1.6, 0, 7); ctx.fill();
+  }
+
+  // бонус — бейдж с таймером
+  if(bonus){
+    const bx=(bonus.x+.5)*cell, by=(bonus.y+.5)*cell;
+    const left = (bonus.expires-gt)/lvl().life;
+    const blink = (bonus.expires-gt < 2 && Math.sin(now/90) > 0);
+    if(!blink){
+      ctx.save();
+      ctx.translate(bx,by); ctx.rotate(Math.sin(now/300)*.12);
+      ctx.shadowColor = bonus.type.color; ctx.shadowBlur = cell*.8;
+      roundRect(-cell*.38, -cell*.38, cell*.76, cell*.76, cell*.22);
+      ctx.fillStyle = 'rgba(10,15,31,.9)'; ctx.fill();
+      ctx.lineWidth = cell*.07; ctx.strokeStyle = bonus.type.color; ctx.stroke();
+      ctx.shadowBlur = 0; ctx.font = `${cell*.5}px 'Segoe UI Emoji',sans-serif`;
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(bonus.type.icon, 0, cell*.03);
+      ctx.restore();
+      // дуга таймера
+      ctx.beginPath();
+      ctx.arc(bx,by, cell*.52, -Math.PI/2, -Math.PI/2 + Math.PI*2*Math.max(0,left));
+      ctx.lineWidth = cell*.07; ctx.strokeStyle = bonus.type.color+'aa'; ctx.stroke();
+    }
+  }
+
+  // змейка — интерполяция между шагами
+  const prog = status==='playing' ? Math.min(1, acc/tickMs) : 1;
+  const ptsArr = snake.map((s,i)=>{
+    const p = prev && prev[i] ? prev[i] : s;
+    return {x:(p.x + (s.x-p.x)*prog + .5)*cell, y:(p.y + (s.y-p.y)*prog + .5)*cell};
+  });
+  const headP = ptsArr[0], tailP = ptsArr[ptsArr.length-1];
+  const grad = ctx.createLinearGradient(headP.x, headP.y, tailP.x, tailP.y);
+  grad.addColorStop(0, '#67e8f9'); grad.addColorStop(1, '#8b5cf6');
+  // свечение
+  strokeSnake(ptsArr, cell*.86, 'rgba(103,232,249,.14)');
+  strokeSnake(ptsArr, cell*.62, 'rgba(103,232,249,.25)');
+  // тело
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.strokeStyle = grad; ctx.lineWidth = cell*.6;
+  ctx.beginPath();
+  ptsArr.forEach((p,i)=> i ? ctx.lineTo(p.x,p.y) : ctx.moveTo(p.x,p.y));
+  ctx.stroke();
+  // глаза
+  const ex = dir[1]!==0 ? cell*.16 : 0, ey = dir[0]!==0 ? cell*.16 : 0;
+  const fx2 = dir[0]*cell*.12, fy2 = dir[1]*cell*.12;
+  ctx.fillStyle='#0a0f1f';
+  ctx.beginPath(); ctx.arc(headP.x+fx2+ex, headP.y+fy2+ey, cell*.10, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(headP.x+fx2-ex, headP.y+fy2-ey, cell*.10, 0, 7); ctx.fill();
+
+  // частицы
+  for(const p of particles){
+    ctx.globalAlpha = Math.max(0, 1 - p.t/p.life);
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x + p.vx*p.t*cell*4, p.y + p.vy*p.t*cell*4, cell*.08, 0, 7); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  // всплывающий текст
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.font = `700 ${cell*.5}px 'Segoe UI',sans-serif`;
+  for(const t of texts){
+    ctx.globalAlpha = Math.max(0, 1 - t.t/.9);
+    ctx.fillStyle = t.color;
+    ctx.fillText(t.str, (t.x+.5)*cell, (t.y+.5)*cell - t.t*cell*1.4);
+  }
+  ctx.globalAlpha = 1;
+}
+function strokeSnake(arr,w,color){
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.strokeStyle=color; ctx.lineWidth=w;
+  ctx.beginPath();
+  arr.forEach((p,i)=> i ? ctx.lineTo(p.x,p.y) : ctx.moveTo(p.x,p.y));
+  ctx.stroke();
+}
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+
+// ---------- главный цикл ----------
+function loop(now){
+  const dt = Math.min(100, now-lastT); lastT = now;
+  if(status==='playing'){
+    gt += dt/1000; acc += dt;
+    computeTick();
+    while(acc >= tickMs && status==='playing'){ acc -= tickMs; step(); }
+    if(bonus && gt >= bonus.expires){
+      burst((bonus.x+.5)*cell, (bonus.y+.5)*cell, bonus.type.color, 8);
+      bonus = null;
+    }
+    for(const p of particles) p.t += dt/1000;
+    particles = particles.filter(p=>p.t<p.life);
+    for(const t of texts) t.t += dt/1000;
+    texts = texts.filter(t=>t.t<.9);
+    updateChips();
+  }
+  drawBoard(now);
+  requestAnimationFrame(loop);
+}
+
+// ---------- кнопки ----------
+for(const b of document.querySelectorAll('.card'))
+  b.onclick = ()=>start(b.dataset.level);
+$('againBtn').onclick = ()=>start(level);
+$('menuBtn').onclick = toMenu;
+$('resumeBtn').onclick = resume;
+
+// ---------- старт ----------
+resize(); refreshRecs(); refreshBest(); updateHud();
+requestAnimationFrame(t=>{ lastT=t; loop(t); });
+</script>
+</body>
+</html>
