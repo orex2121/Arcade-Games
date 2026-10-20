@@ -1,0 +1,1823 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pong: Seasons &amp; Storms</title>
+<style>
+:root{ --accent:#38bdf8; --accent2:#fb7185; }
+*{ box-sizing:border-box; margin:0; padding:0; }
+html,body{ height:100%; overflow:hidden; background:#05070d; color:#e8eefc;
+  font-family:"Segoe UI",system-ui,-apple-system,Arial,sans-serif; }
+#stage{ position:fixed; inset:0; }
+#game{ position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none; }
+.hidden{ display:none !important; }
+.overlay{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  background:rgba(4,7,14,.55); backdrop-filter:blur(6px); z-index:10; padding:12px; }
+.card{ width:min(680px,94vw); max-height:92vh; overflow:auto; background:rgba(13,20,34,.88);
+  border:1px solid rgba(120,170,255,.25); border-radius:18px; padding:22px 26px;
+  box-shadow:0 12px 48px rgba(0,0,0,.55), 0 0 40px rgba(56,189,248,.08); }
+h1.logo{ font-size:clamp(26px,5vw,44px); letter-spacing:.06em; text-align:center;
+  background:linear-gradient(90deg,#7dd3fc,#c084fc,#fda4af); -webkit-background-clip:text;
+  background-clip:text; color:transparent; margin-bottom:2px; }
+.sub{ text-align:center; color:#9fb4d8; margin-bottom:16px; font-size:14px; }
+h2{ font-size:20px; margin-bottom:12px; color:#cfe4ff; }
+.btnrow{ display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-top:16px; }
+button{ font:inherit; color:#eaf3ff; background:rgba(56,189,248,.12); cursor:pointer;
+  border:1px solid rgba(125,190,255,.35); border-radius:10px; padding:10px 18px; min-height:44px;
+  transition:background .15s, transform .1s; }
+button:hover{ background:rgba(56,189,248,.24); }
+button:active{ transform:scale(.97); }
+button:focus-visible{ outline:3px solid #7dd3fc; outline-offset:2px; }
+button.primary{ background:linear-gradient(120deg,#0ea5e9,#7c3aed); border-color:transparent;
+  font-weight:600; }
+button.danger{ border-color:rgba(251,113,133,.5); background:rgba(251,113,133,.12); }
+.menu-grid{ display:flex; flex-direction:column; gap:10px; max-width:420px; margin:0 auto; }
+.recs{ margin-top:16px; font-size:13px; color:#9fb4d8; text-align:center; line-height:1.6; }
+.recs b{ color:#dce9ff; }
+.ach{ font-size:12px; color:#8fa8cc; }
+.ach .got{ color:#fbbf24; }
+fieldset{ border:1px solid rgba(125,190,255,.2); border-radius:10px; padding:10px 12px; margin-bottom:12px; }
+legend{ font-size:13px; color:#9fb4d8; padding:0 6px; }
+label.ctl{ display:flex; align-items:center; gap:8px; font-size:14px; padding:5px 0; cursor:pointer; }
+label.ctl input[type=checkbox]{ width:18px; height:18px; accent-color:#38bdf8; }
+label.ctl input[type=range]{ flex:1; accent-color:#38bdf8; }
+label.ctl select{ flex:1; font:inherit; background:#101a2c; color:#e8eefc;
+  border:1px solid rgba(125,190,255,.3); border-radius:8px; padding:6px 8px; }
+.chips{ display:flex; gap:6px; flex-wrap:wrap; }
+.chips .chipbtn{ padding:8px 12px; min-height:38px; font-size:13px; }
+.chips .chipbtn.sel{ background:linear-gradient(120deg,#0ea5e9,#7c3aed); border-color:transparent; }
+.statgrid{ display:grid; grid-template-columns:1fr 1fr; gap:6px 18px; font-size:14px; color:#c8d8f2; }
+.statgrid b{ color:#fff; }
+.hintline{ font-size:13px; color:#8fa8cc; margin-top:10px; line-height:1.5; }
+#gameButtons{ position:absolute; top:10px; right:12px; display:flex; gap:8px; z-index:5; }
+.gbtn{ width:44px; height:44px; min-height:44px; border-radius:10px; font-size:18px; padding:0;
+  background:rgba(10,16,28,.5); }
+#rotate{ position:absolute; left:50%; bottom:14px; transform:translateX(-50%); z-index:20;
+  background:rgba(10,16,28,.9); border:1px solid rgba(125,190,255,.35); border-radius:12px;
+  padding:10px 16px; font-size:14px; display:none; }
+@media (orientation:portrait) and (max-width:820px){ #rotate{ display:block; } }
+.kbd{ display:inline-block; border:1px solid rgba(255,255,255,.3); border-radius:5px;
+  padding:0 6px; font-size:12px; background:rgba(255,255,255,.08); }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="game"></canvas>
+  <div id="gameButtons">
+    <button id="btnMute" class="gbtn" aria-label="Звук (клавиша M)">♪</button>
+    <button id="btnPause" class="gbtn" aria-label="Пауза (пробел)">❚❚</button>
+  </div>
+
+  <div class="overlay" id="menu">
+    <div class="card">
+      <h1 class="logo">PONG: SEASONS &amp; STORMS</h1>
+      <div class="sub">Классический Pong с сезонами, погодой, ветром и бонусами</div>
+      <div class="menu-grid">
+        <button id="mQuick" class="primary">▶ Играть (быстрый матч)</button>
+        <button id="mTour">🌗 Тур сезонов</button>
+        <button id="mStorm">🌩 Штормовой вызов</button>
+        <button id="mTraining">🎯 Тренировка</button>
+        <button id="mSettings">⚙ Настройки</button>
+        <button id="mHelp">？ Как играть</button>
+      </div>
+      <div class="recs">Побед: <b id="recWins">0</b> · Матчей: <b id="recGames">0</b> ·
+        Лучшее комбо: <b id="recBestRally">0</b><br><span class="ach" id="achList"></span></div>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="setup">
+    <div class="card">
+      <h2 id="setupTitle">Настройки матча</h2>
+      <div id="setupBody"></div>
+      <div class="hintline" id="setupHint"></div>
+      <div class="btnrow">
+        <button id="setupStart" class="primary">Начать матч (Enter)</button>
+        <button data-back="menu">Назад (Esc)</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="pause">
+    <div class="card" style="text-align:center">
+      <h2>Пауза</h2>
+      <div class="menu-grid">
+        <button id="pResume" class="primary">Продолжить</button>
+        <button id="pRestart">Начать заново</button>
+        <button id="pSettings">Настройки</button>
+        <button id="pMenu">Главное меню</button>
+      </div>
+      <div class="hintline">Совет: пробел — пауза, M — звук.</div>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="results">
+    <div class="card">
+      <h2 id="resTitle">Матч окончен</h2>
+      <div class="statgrid" id="resStats"></div>
+      <div class="ach" id="resAch"></div>
+      <div class="btnrow">
+        <button id="rRematch" class="primary">Реванш</button>
+        <button id="rNext" class="hidden">Следующий сезон →</button>
+        <button id="rMenu">Меню</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="help">
+    <div class="card">
+      <h2>Как играть</h2>
+      <div class="hintline">
+        <p><b>Ракетка:</b> водите мышью по полю, или <span class="kbd">W</span>/<span class="kbd">S</span>,
+        <span class="kbd">↑</span>/<span class="kbd">↓</span>, или пальцем по левой половине поля.</p>
+        <p style="margin-top:8px"><b>Подкрутка и наклон:</b> движущаяся ракетка закручивает мяч — он летит по дуге.
+        Зажмите <b>ЛКМ</b> во время движения: ракетка поворачивается гранью в сторону мяча (движение вверх — верхняя
+        грань, вниз — нижняя). Удар наклонённой к мячу гранью даёт до <b>+50%</b> скорости; попадание в обратную
+        сторону наклона отскок не ослабляет.</p>
+        <p style="margin-top:8px"><b>Гол:</b> мяч полностью пересёк границу. Матч — до выбранного счёта
+        с преимуществом в 2 очка. После гола подаёт проигравший розыгрыш.</p>
+        <p style="margin-top:8px"><b>Ветер</b> (индикатор сверху) плавно сносит мяч — упреждайте.
+        В режиме «Косметика» ветер влияет только на частицы.</p>
+        <p style="margin-top:8px"><b>Бонусы</b> появляются в центре поля, их подбирает мяч; владельцем
+        считается игрок, последним ударивший мяч. В HUD показаны активные эффекты и их таймеры.</p>
+        <p style="margin-top:8px"><b>Perfect Return:</b> отбейте быстрый мяч точно центром ракетки.
+        <b>Кнопки:</b> <span class="kbd">Space</span> — пауза, <span class="kbd">Enter</span> — старт,
+        <span class="kbd">Esc</span> — назад, <span class="kbd">M</span> — звук.</p>
+      </div>
+      <div class="btnrow"><button data-back="menu" class="primary">Понятно</button></div>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="settings">
+    <div class="card">
+      <h2>Настройки</h2>
+      <fieldset><legend>Звук</legend>
+        <label class="ctl">Музыка <input type="range" id="setMusic" min="0" max="100"></label>
+        <label class="ctl">Эффекты <input type="range" id="setSfx" min="0" max="100"></label>
+      </fieldset>
+      <fieldset><legend>Графика и доступность</legend>
+        <label class="ctl"><input type="checkbox" id="setLessFx"> Меньше эффектов (тяжёлые частицы, вспышки, тряска)</label>
+        <label class="ctl"><input type="checkbox" id="setContrast"> Высокая контрастность (плотный фон, явные границы)</label>
+        <label class="ctl"><input type="checkbox" id="setFlash"> Вспышки молний</label>
+        <label class="ctl"><input type="checkbox" id="setHint"> Подсветка точки встречи (на лёгких уровнях)</label>
+        <label class="ctl"><input type="checkbox" id="setDebug"> Отладка (траектория ИИ, FPS)</label>
+      </fieldset>
+      <div class="btnrow">
+        <button id="setDefaults">Сброс настроек</button>
+        <button id="setWipe" class="danger">Сбросить прогресс</button>
+        <button data-back="menu" class="primary">Готово</button>
+      </div>
+      <div class="hintline" id="setNote"></div>
+    </div>
+  </div>
+
+  <div id="rotate">↻ Pong: Seasons &amp; Storms — поверните устройство горизонтально</div>
+</div>
+<script>
+'use strict';
+/* ============================================================
+   PONG: SEASONS & STORMS — автономная HTML5-игра (Canvas 2D)
+   Логические координаты поля фиксированы: 1280×720.
+   ============================================================ */
+const W = 1280, H = 720, TAU = Math.PI * 2;
+
+/* Единый объект баланса: все ключевые параметры меняются здесь. */
+const CONFIG = {
+  width: 1280, height: 720,
+  fixedDt: 1 / 120, maxFrameDt: 0.05, maxSubsteps: 8,
+  paddle: { width: 18, height: 118, margin: 50, maxSpeed: 680, acceleration: 4200,
+            tiltPx: 10, tiltRate: 9, tiltAngleDeg: 12, tiltSpeedBonus: 0.50 },
+  ball:   { radius: 11, serveSpeed: 480, maxSpeed: 1060, rallyGain: 1.055, maxBounceAngleDeg: 66 },
+  match:  { winningScore: 11, winBy: 2, serveCountdownSec: 1 },
+  bonus:  { minSpawnSec: 12, maxSpawnSec: 20, maxVisible: 1 },
+  weather:{ transitionSec: 3, minChangeSec: 30, maxChangeSec: 60 },
+  wind:   { accelCosmetic: 0, accelModerateMax: 90, accelStormMax: 170 },
+  megaScale: 1.55, miniScale: 0.62,
+  colors: { player: '#38bdf8', ai: '#fb7185' }
+};
+
+/* Таблица ИИ. Значения скорости/ускорения всегда конечны — «Легенда» не читерит. */
+const AI_LEVELS = [
+  { name:'Новичок',  reactionDelay:0.34, predictionInterval:0.50, errorPixels:115, maxSpeed:280, acceleration:520,  windPredictionFactor:0.0, spinPredictionFactor:0.0, idleCenterBias:0.55 },
+  { name:'Любитель', reactionDelay:0.24, predictionInterval:0.34, errorPixels:70,  maxSpeed:370, acceleration:800,  windPredictionFactor:0.25,spinPredictionFactor:0.15, idleCenterBias:0.5 },
+  { name:'Профи',    reactionDelay:0.15, predictionInterval:0.22, errorPixels:38,  maxSpeed:470, acceleration:1200, windPredictionFactor:0.6, spinPredictionFactor:0.4,  idleCenterBias:0.45 },
+  { name:'Эксперт',  reactionDelay:0.08, predictionInterval:0.12, errorPixels:18,  maxSpeed:550, acceleration:1600, windPredictionFactor:0.85,spinPredictionFactor:0.8,  idleCenterBias:0.4 },
+  { name:'Легенда',  reactionDelay:0.04, predictionInterval:0.06, errorPixels:6,   maxSpeed:620, acceleration:2000, windPredictionFactor:1.0, spinPredictionFactor:1.0,  idleCenterBias:0.35 }
+];
+
+/* ---------- Утилиты ---------- */
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const lerp=(a,b,t)=>a+(b-a)*t;
+function approach(v,target,maxStep){ if(v<target)return Math.min(v+maxStep,target); if(v>target)return Math.max(v-maxStep,target); return v; }
+function hex2rgb(h){ const n=parseInt(h.slice(1),16); return [n>>16&255,n>>8&255,n&255]; }
+function mixHex(a,b,t){ const A=hex2rgb(a),B=hex2rgb(b); return `rgb(${Math.round(lerp(A[0],B[0],t))},${Math.round(lerp(A[1],B[1],t))},${Math.round(lerp(A[2],B[2],t))})`; }
+function mulberry32(seed){ let a=seed>>>0; return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+
+/* ---------- Сезоны, локации, погода ---------- */
+const SEASONS=[
+ { id:'spring', name:'Весна',
+   locations:[
+     { name:'Цветущий парк', sky:['#3f6d8e','#c9b8d6'], decor:'blossom', accent:'#f9a8d4' },
+     { name:'Сад после дождя', sky:['#31566f','#a8c4c9'], decor:'garden', accent:'#6ee7b7' } ] },
+ { id:'summer', name:'Лето',
+   locations:[
+     { name:'Тропический закат', sky:['#7c3a58','#f59e0b'], decor:'sunset', accent:'#fbbf24' },
+     { name:'Пляж у океана', sky:['#2563a8','#bfe3ef'], decor:'beach', accent:'#fde68a' } ] },
+ { id:'autumn', name:'Осень',
+   locations:[
+     { name:'Янтарный лес', sky:['#4b3a52','#d98a4a'], decor:'forest', accent:'#fb923c' },
+     { name:'Городской парк', sky:['#39424f','#9c7f63'], decor:'citypark', accent:'#f59e0b' } ] },
+ { id:'winter', name:'Зима',
+   locations:[
+     { name:'Заснеженный лес', sky:['#2b3b5c','#aebfd8'], decor:'snowforest', accent:'#93c5fd' },
+     { name:'Полярная ночь', sky:['#0b1026','#1e3a5f'], decor:'polar', accent:'#67e8f9' } ] }
+];
+/* Тематическое совместимые погодные наборы (в режиме «Хаос» ограничения снимаются). */
+const SEASON_WEATHER={
+ spring:['clear','cloudy','rain','fog','petals'],
+ summer:['clear','cloudy','rain','storm','fog'],
+ autumn:['clear','cloudy','rain','fog','leaves'],
+ winter:['clear','cloudy','snow','blizzard','fog']
+};
+const ALL_WEATHER=['clear','cloudy','rain','storm','fog','snow','blizzard','petals','leaves'];
+/* weather: базовая интенсивность ветра 0..1, тип частиц, параметры */
+const WEATHER_DEFS={
+ clear:  { name:'Ясно',     windBase:0.10, windVar:0.05, particles:null,   tint:'rgba(255,255,255,0.02)', dark:0 },
+ cloudy: { name:'Облачно',  windBase:0.22, windVar:0.10, particles:null,   tint:'rgba(140,160,190,0.14)', dark:0.10 },
+ rain:   { name:'Дождь',    windBase:0.40, windVar:0.16, particles:'rain', tint:'rgba(70,110,160,0.22)',  dark:0.22, rainDensity:0.6 },
+ storm:  { name:'Гроза',    windBase:0.62, windVar:0.22, particles:'rain', tint:'rgba(40,60,110,0.34)',   dark:0.36, rainDensity:1.1, lightning:true },
+ fog:    { name:'Туман',    windBase:0.12, windVar:0.06, particles:null,   tint:'rgba(200,210,225,0.16)', dark:0.06, fog:0.55 },
+ snow:   { name:'Снег',     windBase:0.30, windVar:0.12, particles:'snow', tint:'rgba(220,230,245,0.12)', dark:0.06, snowDensity:0.7 },
+ blizzard:{name:'Метель',   windBase:0.72, windVar:0.25, particles:'snow', tint:'rgba(190,205,230,0.2)',  dark:0.12, snowDensity:1.4, gustBoost:1.6 },
+ petals: { name:'Лепестки', windBase:0.25, windVar:0.10, particles:'petals',tint:'rgba(250,200,220,0.08)',dark:0 },
+ leaves: { name:'Листопад', windBase:0.30, windVar:0.12, particles:'leaves',tint:'rgba(230,150,80,0.08)', dark:0.04 }
+};
+
+/* ---------- Бонусы ---------- */
+const BONUS_DEFS={
+ mega:      { name:'Mega Paddle',   icon:'⬆', color:'#4ade80', desc:'Ракетка владельца увеличивается' },
+ mini:      { name:'Mini Paddle',   icon:'⬇', color:'#f87171', desc:'Ракетка соперника уменьшается' },
+ slow:      { name:'Slow Motion',   icon:'🐢', color:'#a78bfa', desc:'Мяч замедляется' },
+ overdrive: { name:'Overdrive',     icon:'⚡', color:'#fbbf24', desc:'Ускорение мяча после касания владельца' },
+ shield:    { name:'Shield',        icon:'🛡', color:'#38bdf8', desc:'Спасает от одного гола' },
+ windBreak: { name:'Wind Breaker',  icon:'🌀', color:'#2dd4bf', desc:'Ветер не влияет на мяч' },
+ curve:     { name:'Curve Shot',    icon:'↯', color:'#e879f9', desc:'Усиленное вращение следующего удара' },
+ scoreBoost:{ name:'Score Boost',   icon:'×2', color:'#f472b6', desc:'Следующий гол даёт 2 очка' },
+ chaos:     { name:'Chaos Orb',     icon:'✷', color:'#fb923c', desc:'Резкий порыв и смена направления ветра' }
+};
+const COMPETITIVE_BANNED=['scoreBoost','chaos','mini'];
+
+/* ---------- Хранилище (с fallback при недоступном localStorage) ---------- */
+const DEFAULT_SETTINGS={ musicVol:50, sfxVol:70, soundOn:true, lessFx:false, contrast:false, flash:true, hint:true, debug:false };
+const DEFAULT_RECORDS={ wins:0, games:0, bestRally:0, ach:{}, seasonsWon:{} };
+class StorageManager{
+  constructor(){
+    this.ok=false;
+    try{ localStorage.setItem('__pss_t','1'); localStorage.removeItem('__pss_t'); this.ok=true; }
+    catch(e){ /* приватный режим/файловое ограничение — играем без сохранения */ }
+  }
+  load(key,def){
+    try{ if(!this.ok) return JSON.parse(JSON.stringify(def));
+      const v=JSON.parse(localStorage.getItem(key));
+      return (v&&typeof v==='object')?{...JSON.parse(JSON.stringify(def)),...v}:JSON.parse(JSON.stringify(def));
+    }catch(e){ return JSON.parse(JSON.stringify(def)); }
+  }
+  save(key,obj){ try{ if(this.ok) localStorage.setItem(key,JSON.stringify(obj)); }catch(e){} }
+  wipe(){ try{ if(this.ok){ localStorage.removeItem('pss_settings'); localStorage.removeItem('pss_records'); } }catch(e){} }
+}
+const store=new StorageManager();
+const S=store.load('pss_settings',DEFAULT_SETTINGS);
+const R=store.load('pss_records',DEFAULT_RECORDS);
+/* Системная настройка «уменьшить движение» снижает нагрузку по умолчанию */
+try{ if(matchMedia('(prefers-reduced-motion: reduce)').matches && !localStorage.getItem('pss_settings')) S.lessFx=true; }catch(e){}
+const saveSettings=()=>store.save('pss_settings',S);
+const saveRecords=()=>store.save('pss_records',R);
+
+/* ---------- Canvas и вьюпорт ---------- */
+const canvasEl=document.getElementById('game');
+const ctx=canvasEl.getContext('2d');
+const view={ s:1, ox:0, oy:0, dpr:1 };
+function resize(){
+  const cw=innerWidth, chh=innerHeight;
+  view.dpr=Math.min(devicePixelRatio||1, 2); // разумное ограничение dpr
+  canvasEl.width=Math.round(cw*view.dpr); canvasEl.height=Math.round(chh*view.dpr);
+  view.s=Math.min(cw/W, chh/H); view.ox=(cw-W*view.s)/2; view.oy=(chh-H*view.s)/2;
+}
+addEventListener('resize',resize); resize();
+/* Пиксельные координаты → логические координаты поля */
+function toLogical(clientX,clientY){
+  return { x:(clientX-view.ox)/view.s, y:(clientY-view.oy)/view.s };
+}
+
+let game=null, ui=null; // создаются позже
+
+/* ---------- Звук: всё синтезируется через Web Audio API ---------- */
+class AudioManager{
+  constructor(){ this.ctx=null; this.master=null; this.musicGain=null; this.sfxGain=null;
+    this.musicOn=false; this.musicInt=null; }
+  ensure(){
+    if(this.ctx) return;
+    const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+    this.ctx=new AC();
+    this.master=this.ctx.createGain(); this.master.gain.value=0.9; // ограничение общей громкости
+    this.master.connect(this.ctx.destination);
+    this.musicGain=this.ctx.createGain(); this.musicGain.connect(this.master);
+    this.sfxGain=this.ctx.createGain(); this.sfxGain.connect(this.master);
+    this.applyVolumes();
+  }
+  /* Инициализация/возобновление AudioContext только после жеста пользователя */
+  gesture(){ if(!this.ctx) this.ensure(); else if(this.ctx.state==='suspended') this.ctx.resume(); }
+  applyVolumes(){
+    if(!this.ctx) return;
+    const on=S.soundOn?1:0;
+    this.sfxGain.gain.value=on*S.sfxVol/100*0.8;
+    this.musicGain.gain.value=this.ducked?0:on*S.musicVol/100*0.55;
+  }
+  duck(on){ this.ducked=on; this.applyVolumes(); }
+  tone(freq,dur,type,vol,when=0,slideTo=null){
+    if(!this.ctx||!S.soundOn) return;
+    const t=this.ctx.currentTime+when;
+    const o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type; o.frequency.setValueAtTime(freq,t);
+    if(slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(20,slideTo),t+dur);
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.connect(g); g.connect(this.sfxGain); o.start(t); o.stop(t+dur+0.02);
+  }
+  noise(dur,vol,filterFreq,q=1,when=0){
+    if(!this.ctx||!S.soundOn) return;
+    const t=this.ctx.currentTime+when;
+    const len=Math.max(1,Math.floor(this.ctx.sampleRate*dur));
+    const buf=this.ctx.createBuffer(1,len,this.ctx.sampleRate);
+    const d=buf.getChannelData(0); for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
+    const src=this.ctx.createBufferSource(); src.buffer=buf;
+    const f=this.ctx.createBiquadFilter(); f.type='bandpass'; f.frequency.value=filterFreq; f.Q.value=q;
+    const g=this.ctx.createGain();
+    g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    src.connect(f); f.connect(g); g.connect(this.sfxGain); src.start(t);
+  }
+  hit(power){ this.tone(150+power*220,0.09,'square',0.32); this.tone(70,0.06,'sine',0.25); }
+  wall(){ this.tone(320,0.05,'triangle',0.18); }
+  perfect(){ this.tone(1320,0.16,'sine',0.3); this.tone(1760,0.2,'sine',0.22,0.06); }
+  bonus(){ this.tone(660,0.1,'sine',0.3); this.tone(990,0.12,'sine',0.3,0.08); }
+  goal(mine){ const b=mine?[520,660,880]:[300,220]; b.forEach((f,i)=>this.tone(f,0.22,'triangle',0.34,i*0.09)); }
+  win(){ [523,659,784,1046,1318].forEach((f,i)=>this.tone(f,0.35,'triangle',0.32,i*0.12)); }
+  lose(){ [440,330,262,196].forEach((f,i)=>this.tone(f,0.4,'sine',0.28,i*0.16)); }
+  thunder(){ this.noise(1.4,0.5,90,0.4); this.noise(0.7,0.25,45,0.3,0.15); }
+  gust(){ this.noise(1.2,0.16,600,0.8); }
+  countdown(last){ this.tone(last?880:520,0.1,'sine',0.3); }
+  startMusic(){
+    this.ensure(); if(!this.ctx||this.musicOn) return;
+    this.musicOn=true;
+    /* Минималистичный паттерн: пэд-аккорд + случайные пентатонические щипки */
+    const chords=[[110,165,220,262],[87,131,175,220],[131,196,262,330],[98,147,196,247]];
+    const scale=[220,247,294,330,392,440,523,587];
+    let ci=0;
+    const tick=()=>{
+      if(!this.ctx||!this.musicOn||!S.soundOn) return;
+      const t=this.ctx.currentTime+0.05;
+      const ch=chords[ci++%chords.length];
+      ch.forEach((f,i)=>this.padTone(f,t,2.1,0.05+(i%2)*0.015));
+      for(let k=0;k<4;k++) if(Math.random()<0.45){
+        const f=scale[(Math.random()*scale.length)|0];
+        this.padTone(f*2,t+0.45*k+0.3,0.4,0.045,'triangle');
+      }
+    };
+    tick(); this.musicInt=setInterval(tick,2100);
+    this.applyVolumes();
+  }
+  padTone(freq,at,dur,vol,type='sawtooth'){
+    const o=this.ctx.createOscillator(), g=this.ctx.createGain(), lp=this.ctx.createBiquadFilter();
+    o.type=type; o.frequency.value=freq; lp.type='lowpass'; lp.frequency.value=900; lp.Q.value=0.6;
+    g.gain.setValueAtTime(0,at); g.gain.linearRampToValueAtTime(vol,at+0.4);
+    g.gain.linearRampToValueAtTime(vol*0.6,at+dur*0.7); g.gain.linearRampToValueAtTime(0,at+dur);
+    o.connect(lp); lp.connect(g); g.connect(this.musicGain); o.start(at); o.stop(at+dur+0.05);
+  }
+}
+const audio=new AudioManager();
+
+/* ---------- Ввод: мышь / клавиатура / тач, автопереключение по последнему активному ---------- */
+class InputManager{
+  constructor(){
+    this.lastInput='mouse'; this.keys=new Set();
+    this.mouseY=H/2; this.touchY=H/2; this.touchActive=false; this.mouseDown=false;
+    addEventListener('keydown',e=>{
+      const k=e.code;
+      if(['Space','ArrowUp','ArrowDown'].includes(k) && game) e.preventDefault();
+      if(['KeyW','KeyS','ArrowUp','ArrowDown'].includes(k)) this.lastInput='key';
+      this.keys.add(k);
+      if(game) game.handleKey(k);
+    });
+    addEventListener('keyup',e=>this.keys.delete(e.code));
+    canvasEl.addEventListener('mousemove',e=>{
+      this.lastInput='mouse';
+      this.mouseY=clamp(toLogical(e.clientX,e.clientY).y,0,H);
+    });
+    canvasEl.addEventListener('mousedown',e=>{ if(e.button===0) this.mouseDown=true; });
+    addEventListener('mouseup',e=>{ if(e.button===0) this.mouseDown=false; });
+    const touch=e=>{
+      this.lastInput='touch'; this.touchActive=true;
+      const t=e.touches[0]; if(!t) return;
+      const p=toLogical(t.clientX,t.clientY);
+      if(p.x<W/2) this.touchY=clamp(p.y,0,H); // вертикальное перетаскивание по левой половине
+      e.preventDefault();
+    };
+    canvasEl.addEventListener('touchstart',touch,{passive:false});
+    canvasEl.addEventListener('touchmove',touch,{passive:false});
+    canvasEl.addEventListener('touchend',()=>{ this.touchActive=false; });
+  }
+  keyDir(){
+    let d=0;
+    if(this.keys.has('KeyW')||this.keys.has('ArrowUp')) d-=1;
+    if(this.keys.has('KeyS')||this.keys.has('ArrowDown')) d+=1;
+    return d;
+  }
+  /* Ракетка игрока следит за последним активным способом ввода */
+  paddleTarget(){
+    if(this.lastInput==='touch') return this.touchY;
+    return this.mouseY;
+  }
+}
+const input=new InputManager();
+
+/* ---------- Погода: состояние, ветер с порывами, плавные переходы, частицы ---------- */
+class WeatherSystem{
+  constructor(seasonIdx,dynamic,windMode,chaos){
+    this.seasonIdx=seasonIdx;
+    this.seasonId=SEASONS[seasonIdx].id;
+    this.allowed=(chaos?ALL_WEATHER:SEASON_WEATHER[this.seasonId]);
+    this.dynamic=dynamic; this.windMode=windMode;
+    this.cur=this.allowed[(Math.random()*this.allowed.length)|0];
+    this.prev=null; this.transT=1; // 1 = переход завершён
+    this.time=0;
+    this.baseAngle=Math.random()*TAU; this.angleTarget=this.baseAngle;
+    this.intensity=WEATHER_DEFS[this.cur].windBase;
+    this.gustTimer=4+Math.random()*5; this.gustActive=false; this.gustLeft=0; this.gustTarget=0; this.gustSmooth=0;
+    this.wanderA=Math.random()*TAU; this.wanderB=Math.random()*TAU;
+    this.nextChange=CONFIG.weather.minChangeSec+Math.random()*(CONFIG.weather.maxChangeSec-CONFIG.weather.minChangeSec);
+    this.lightTimer=4+Math.random()*8; this.flash=null;
+    this.particles=[];
+    this.rng=Math.random; // не детерминированный; seed — только в отладочном режиме
+  }
+  def(key){ return WEATHER_DEFS[key]; }
+  /* Смешанные параметры для визуала во время перехода (crossfade) */
+  blended(){
+    const a=this.def(this.cur);
+    if(!this.prev||this.transT>=1) return {defA:a,defB:a,t:1};
+    return {defA:a,defB:this.def(this.prev),t:this.transT};
+  }
+  changeTo(key){
+    if(key===this.cur) return;
+    this.prev=this.cur; this.cur=key; this.transT=0;
+    this.nextChange=CONFIG.weather.minChangeSec+Math.random()*(CONFIG.weather.maxChangeSec-CONFIG.weather.minChangeSec);
+  }
+  /* Ветер как вектор направления и интенсивность (0..~1.6). Плавная интерполяция. */
+  update(dt){
+    this.time+=dt;
+    if(this.transT<1) this.transT=Math.min(1,this.transT+dt/CONFIG.weather.transitionSec);
+    const B=this.blended();
+    const windBase=lerp(B.defA.windBase,B.defB.windBase,this.transT);
+    const windVar=lerp(B.defA.windVar,B.defB.windVar,this.transT);
+    const gustBoost=lerp(B.defA.gustBoost||1,B.defB.gustBoost||1,this.transT);
+    /* Медленный дрейф направления и блуждание силы (синусы со случайными фазами) */
+    this.angleTarget+=(this.rng()-0.5)*0.5*dt;
+    this.baseAngle=approach(this.baseAngle,this.angleTarget,0.35*dt);
+    const wander=Math.sin(this.time*0.11+this.wanderA)*0.5+Math.sin(this.time*0.047+this.wanderB)*0.5;
+    let intensity=windBase+windVar*wander;
+    /* Порывы: появляются нечасто, нарастают и спадают плавно */
+    this.gustTimer-=dt;
+    if(this.gustTimer<=0 && !this.gustActive){
+      this.gustActive=true; this.gustLeft=1.5+Math.random()*1.8;
+      this.gustTarget=(0.35+Math.random()*0.5)*gustBoost;
+      audio.gust();
+      this.gustTimer=3.5+Math.random()*6;
+    }
+    if(this.gustActive){
+      this.gustLeft-=dt;
+      const gTarget=this.gustLeft>0?this.gustTarget:0;
+      this.gustSmooth=approach(this.gustSmooth,gTarget,1.2*dt);
+      if(this.gustLeft<=-0.01){ this.gustActive=false; this.gustTarget=0; }
+    } else this.gustSmooth=approach(this.gustSmooth,0,0.8*dt);
+    intensity+=this.gustSmooth;
+    this.intensity=clamp(intensity,0.03,1.7);
+    this.dirX=Math.cos(this.baseAngle); this.dirY=Math.sin(this.baseAngle);
+    /* Динамическая смена погоды в том же сезоне */
+    if(this.dynamic){
+      this.nextChange-=dt;
+      if(this.nextChange<=0){
+        const others=this.allowed.filter(k=>k!==this.cur);
+        this.changeTo(others[(Math.random()*others.length)|0]);
+      }
+    }
+    /* Молнии — только в зоне декора (вне поля), с громом с задержкой */
+    const curDef=this.def(this.cur);
+    if(curDef.lightning){
+      this.lightTimer-=dt;
+      if(this.lightTimer<=0){
+        this.lightTimer=5+Math.random()*10;
+        this.flash={ x:W*(0.1+Math.random()*0.8), y:H*0.12*Math.random(), t:0.5,
+                     soundT:0.4+Math.random()*0.9 };
+      }
+    }
+    if(this.flash){
+      this.flash.t-=dt; this.flash.soundT-=dt;
+      if(this.flash.soundT<=0 && this.flash.t>-0.05) audio.thunder();
+      if(this.flash.t<-1) this.flash=null;
+    }
+    this.updateParticles(dt);
+  }
+  /* Ускорение мяча от ветра (физика); «Косметика» даёт ноль */
+  windAccel(){
+    if(this.windMode==='cosmetic') return {x:0,y:0};
+    const max=this.windMode==='storm'?CONFIG.wind.accelStormMax:CONFIG.wind.accelModerateMax;
+    const a=this.intensity*max;
+    return { x:this.dirX*a, y:this.dirY*a };
+  }
+  resetBallParticlesCap(){
+    this.cap=(S.lessFx?70:190);
+  }
+  updateParticles(dt){
+    this.resetBallParticlesCap();
+    const B=this.blended();
+    /* Визуальная скорость частиц согласована с ветром */
+    const wvx=this.dirX*(40+this.intensity*300), wvy=this.dirY*(40+this.intensity*300);
+    const spawnFor=(kind,dens)=>{
+      if(!dens||this.particles.length>=this.cap) return;
+      const n=Math.min(6,Math.round(dens*(S.lessFx?1.5:4)));
+      for(let i=0;i<n;i++) this.particles.push(this.makeParticle(kind));
+    };
+    if(B.t>=1){ const d=this.def(this.cur); if(d.particles) spawnFor(d.particles,d[d.particles+'Density']??1); }
+    else {
+      spawnFor(B.defA.particles,(B.defA[B.defA.particles+'Density']??1)*(1-B.t));
+      spawnFor(B.defB.particles,(B.defB[B.defB.particles+'Density']??1)*B.t);
+    }
+    for(let i=this.particles.length-1;i>=0;i--){
+      const p=this.particles[i]; p.life-=dt; p.age+=dt;
+      if(p.life<=0){ this.particles.splice(i,1); continue; }
+      const sway=p.kind==='snow'||p.kind==='petals'||p.kind==='leaves'
+        ? Math.sin((p.life+p.seed)*2.5)*40 : 0;
+      if(p.kind==='rain'){ p.vy=820+this.intensity*380; p.vx=wvx*1.4; }
+      p.x+=(p.vx+wvx+sway)*dt; p.y+=(p.vy+wvy*0.4)*dt;
+      if(p.kind!=='rain') p.rot+=p.rotV*dt;
+      if(p.x<-40)p.x+=W+80; if(p.x>W+40)p.x-=W+80;
+      if(p.y>H+40){ p.y=-30; p.x=Math.random()*W; }
+      if(p.y<-60)p.y=H+30;
+    }
+  }
+  makeParticle(kind){
+    const p={ kind, x:Math.random()*W, y:-20-Math.random()*H, vx:0, vy:0, seed:Math.random()*10,
+              age:0, life:999, size:2+Math.random()*3, rot:Math.random()*TAU, rotV:(Math.random()-0.5)*6,
+              hue:Math.random() };
+    if(kind==='snow') p.size=1.5+Math.random()*2.6;
+    if(kind==='petals') p.size=2.5+Math.random()*2.5;
+    if(kind==='leaves'){ p.size=3+Math.random()*3; }
+    return p;
+  }
+  drawParticles(g){
+    const B=this.blended();
+    for(const p of this.particles){
+      const fadeIn=clamp(p.age,0,1); // мягкое появление
+      if(p.kind==='rain'){
+        g.strokeStyle=`rgba(170,205,245,${(p.kind==='rain'?0.35:0.3)*fadeIn})`;
+        g.lineWidth=1.2;
+        g.beginPath(); g.moveTo(p.x,p.y); g.lineTo(p.x-p.vx*0.018,p.y-p.vy*0.018); g.stroke();
+      } else if(p.kind==='snow'){
+        g.fillStyle=`rgba(240,248,255,${0.55*fadeIn})`;
+        g.beginPath(); g.arc(p.x,p.y,p.size,0,TAU); g.fill();
+      } else if(p.kind==='petals'){
+        g.fillStyle=p.hue<0.5?`rgba(249,168,212,${0.6*fadeIn})`:`rgba(255,220,235,${0.5*fadeIn})`;
+        g.beginPath(); g.ellipse(p.x,p.y,p.size,p.size*0.55,p.rot,0,TAU); g.fill();
+      } else if(p.kind==='leaves'){
+        g.fillStyle=p.hue<0.5?`rgba(234,140,60,${0.65*fadeIn})`:`rgba(200,90,40,${0.6*fadeIn})`;
+        g.save(); g.translate(p.x,p.y); g.rotate(p.rot);
+        g.beginPath(); g.ellipse(0,0,p.size,p.size*0.45,0,0,TAU); g.fill(); g.restore();
+      }
+    }
+    /* Туман — декоративный слой ЗА полем (добавляется в bg-проходе) */
+  }
+  fogAmount(){
+    const B=this.blended();
+    return lerp(B.defA.fog||0,B.defB.fog||0,B.t);
+  }
+}
+
+/* ---------- Сезонные фоны: decor кэшируется в offscreen canvas, переходы crossfade ---------- */
+class BackgroundRenderer{
+  constructor(){
+    this.cache=new Map();
+    this.cur=null; this.prev=null; this.transT=1;
+  }
+  themeKey(si,li){ return SEASONS[si].id+'#'+li; }
+  setTheme(si,li){
+    const k=this.themeKey(si,li);
+    if(this.cur===k) return;
+    this.prev=this.cur; this.cur=k; this.transT=this.prev?0:1;
+  }
+  update(dt){ if(this.transT<1) this.transT=Math.min(1,this.transT+dt/CONFIG.weather.transitionSec); }
+  decorCanvas(si,li){
+    const k=this.themeKey(si,li);
+    if(this.cache.has(k)) return this.cache.get(k);
+    let seed=0; for(const c of k) seed=(seed*31+c.charCodeAt(0))>>>0;
+    const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+    this.drawDecor(cv.getContext('2d'),si,li,mulberry32(seed));
+    this.cache.set(k,cv); return cv;
+  }
+  drawDecor(g,si,li,r){
+    const loc=SEASONS[si].locations[li];
+    const grad=g.createLinearGradient(0,0,0,H);
+    grad.addColorStop(0,loc.sky[0]); grad.addColorStop(1,loc.sky[1]);
+    g.fillStyle=grad; g.fillRect(0,0,W,H);
+    const kind=loc.decor;
+    switch(kind){
+      case 'blossom': case 'garden': this.drawSpring(g,r,kind); break;
+      case 'sunset': case 'beach': this.drawSummer(g,r,kind); break;
+      case 'forest': case 'citypark': this.drawAutumn(g,r,kind); break;
+      case 'snowforest': case 'polar': this.drawWinter(g,r,kind); break;
+    }
+  }
+  hills(g,color,y,h){ g.fillStyle=color; g.beginPath(); g.moveTo(0,H);
+    for(let x=0;x<=W;x+=64) g.lineTo(x,y+Math.sin(x*0.004+h)*40);
+    g.lineTo(W,H); g.closePath(); g.fill(); }
+  tree(g,r,x,y,s,crown){ g.strokeStyle='#4b3226'; g.lineWidth=5*s;
+    g.beginPath(); g.moveTo(x,y); g.lineTo(x-6*s,y-40*s); g.moveTo(x,y); g.lineTo(x+6*s,y-45*s); g.stroke();
+    g.fillStyle=crown;
+    for(let i=0;i<5;i++){ g.beginPath();
+      g.arc(x+(r_(r,-20,20))*s, y-(40+r_(r,0,25))*s, r_(r,14,22)*s,0,TAU); g.fill(); } }
+  pine(g,x,y,s,color){ g.fillStyle='#4b3226'; g.fillRect(x-2*s,y-10*s,4*s,10*s);
+    g.fillStyle=color;
+    for(let i=0;i<3;i++){ const w=(30-i*8)*s, yy=y-10*s-i*22*s;
+      g.beginPath(); g.moveTo(x-w,yy); g.lineTo(x+w,yy); g.lineTo(x,yy-34*s); g.closePath(); g.fill(); } }
+  cloud(g,r,x,y,s,alpha){ g.fillStyle=`rgba(235,240,250,${alpha})`;
+    for(let i=0;i<4;i++){ g.beginPath(); g.arc(x+i*30*s,y+Math.sin(i)*8*s,(16+r_(r,0,8))*s,0,TAU); g.fill(); } }
+  drawSpring(g,r,kind){
+    this.hills(g,'#3a6b4c',H*0.72,1); this.hills(g,'#2f5d43',H*0.82,2.1);
+    if(kind==='garden'){ g.fillStyle='rgba(160,200,220,0.25)';
+      for(let i=0;i<5;i++){ g.beginPath(); g.ellipse(r_(r,100,W-100),r_(r,H*0.75,H*0.95),r_(r,60,130),r_(r,8,18),0,0,TAU); g.fill(); } }
+    const crown=kind==='blossom'?'#f2a5c8':'#7cc9a0';
+    for(let i=0;i<7;i++) this.tree(g,r,r_(r,60,W-60),r_(r,H*0.66,H*0.9),r_(r,0.8,1.4),crown);
+    this.cloud(g,r,r_(r,100,400),90,1,0.5); this.cloud(g,r,r_(r,700,1100),130,1.2,0.4);
+  }
+  drawSummer(g,r,kind){
+    if(kind==='sunset'){
+      g.fillStyle='rgba(255,220,120,0.9)'; g.beginPath(); g.arc(W*0.5,H*0.62,90,0,TAU); g.fill();
+      this.hills(g,'#5b3a55',H*0.66,1.5); this.hills(g,'#3c2740',H*0.8,2.4);
+    } else {
+      g.fillStyle='#1d5d96'; g.fillRect(0,H*0.55,W,H*0.45);
+      g.fillStyle='rgba(255,255,255,0.25)';
+      for(let i=0;i<9;i++) g.fillRect(r_(r,0,W),H*0.58+r_(r,0,H*0.3),r_(r,60,180),3);
+      this.hills(g,'#e8cf9e',H*0.86,3.2);
+      g.fillStyle='#2f6b46'; g.fillRect(60,H*0.5,10,H*0.3);
+    }
+    /* силуэты пальм */
+    for(let i=0;i<3;i++){ const x=r_(r,80,W-80), y=H*0.88, lean=r_(r,-25,25);
+      g.strokeStyle='#23303f'; g.lineWidth=6;
+      g.beginPath(); g.moveTo(x,y); g.quadraticCurveTo(x+lean*0.5,y-90,x+lean,y-150); g.stroke();
+      g.fillStyle='#1f3d33';
+      for(let f=0;f<6;f++){ const a=Math.PI+(f/5)*Math.PI;
+        g.beginPath(); g.moveTo(x+lean,y-150);
+        g.quadraticCurveTo(x+lean+Math.cos(a)*50,y-150+Math.sin(a)*30-20,x+lean+Math.cos(a)*90,y-150+Math.sin(a)*60);
+        g.lineWidth=8; g.strokeStyle='#1f3d33'; g.stroke(); } }
+    g.fillStyle='rgba(255,240,190,0.18)'; g.fillRect(0,0,W,H);
+  }
+  drawAutumn(g,r,kind){
+    if(kind==='citypark'){
+      g.fillStyle='#242c38';
+      for(let i=0;i<8;i++){ const bw=r_(r,70,150), bh=r_(r,180,380), bx=i*165+r_(r,-20,20);
+        g.fillRect(bx,H-60-bh,bw,bh);
+        g.fillStyle='rgba(255,214,140,0.5)';
+        for(let w=0;w<10;w++) if(r()<0.5) g.fillRect(bx+r_(r,8,bw-16),H-60-bh+r_(r,10,bh-20),8,10);
+        g.fillStyle='#242c38'; }
+      this.hills(g,'#3c4a3a',H*0.8,2);
+      g.fillStyle='#f7d08a'; /* фонари */
+      for(let i=0;i<4;i++){ const x=150+i*300;
+        g.fillRect(x-2,H*0.62,4,H*0.28);
+        g.beginPath(); g.arc(x,H*0.6,10,0,TAU); g.fill();
+        const gl=g.createRadialGradient(x,H*0.6,0,x,H*0.6,70);
+        gl.addColorStop(0,'rgba(250,200,120,0.28)'); gl.addColorStop(1,'rgba(250,200,120,0)');
+        g.fillStyle=gl; g.beginPath(); g.arc(x,H*0.6,70,0,TAU); g.fill();
+        g.fillStyle='#f7d08a'; }
+    } else {
+      this.hills(g,'#6b4632',H*0.74,1.7); this.hills(g,'#54352a',H*0.85,2.6);
+    }
+    const col=kind==='forest'?['#d97b2f','#b8531f','#e8a24a']:['#7c9d54','#5f7d40'];
+    for(let i=0;i<8;i++) this.pine(g,r_(r,40,W-40),r_(r,H*0.7,H*0.92),r_(r,0.7,1.3),col[i%2]);
+  }
+  drawWinter(g,r,kind){
+    g.fillStyle=kind==='polar'?'#0a0f22':'#1b2740';
+    for(let i=0;i<(kind==='polar'?90:30);i++){
+      g.globalAlpha=0.3+r()*0.7; g.fillRect(r_(r,0,W),r_(r,0,H*0.6),2,2); }
+    g.globalAlpha=1;
+    if(kind!=='polar'){ g.fillStyle='#e6edf6'; g.beginPath(); g.arc(W*0.78,110,46,0,TAU); g.fill(); }
+    this.hills(g,'#cdd9e8',H*0.74,1.4); this.hills(g,'#e8eef7',H*0.86,2.3);
+    for(let i=0;i<9;i++) this.pine(g,r_(r,30,W-30),r_(r,H*0.72,H*0.95),r_(r,0.7,1.4),kind==='polar'?'#14203a':'#24466b');
+  }
+  /* Полнокадровый проход: кроссфейд тем + атмосферные оверлеи */
+  draw(g,weather,time){
+    if(!this.cur){ g.fillStyle='#05070d'; g.fillRect(0,0,W,H); return; }
+    const [cs,cl]=this.cur.split('#'); const si=SEASONS.findIndex(s=>s.id===cs); const li=+cl;
+    if(this.prev&&this.transT<1){
+      const [ps,pl]=this.prev.split('#'); const psi=SEASONS.findIndex(s=>s.id===ps);
+      g.drawImage(this.decorCanvas(psi,+pl),0,0);
+      g.globalAlpha=this.transT;
+      g.drawImage(this.decorCanvas(si,li),0,0);
+      g.globalAlpha=1;
+    } else g.drawImage(this.decorCanvas(si,li),0,0);
+    /* Северное сияние поверх неба в «Полярной ночи» */
+    if(this.cur==='winter#1'){
+      for(let b=0;b<3;b++){
+        g.globalAlpha=0.12+0.05*Math.sin(time*0.4+b*2);
+        const grd=g.createLinearGradient(0,0,0,H*0.5);
+        grd.addColorStop(0,['#34d399','#60a5fa','#a78bfa'][b]); grd.addColorStop(1,'rgba(0,0,0,0)');
+        g.fillStyle=grd; g.beginPath(); g.moveTo(0,0);
+        for(let x=0;x<=W;x+=40) g.lineTo(x,120+b*70+Math.sin(x*0.004+time*0.5+b*2)*50);
+        g.lineTo(W,0); g.closePath(); g.fill();
+      }
+      g.globalAlpha=1;
+    }
+    /* Оверлеи текущей/предыдущей погоды (crossfade тинта) */
+    const B=weather.blended();
+    g.fillStyle=B.defA.tint; g.globalAlpha=1-B.t; g.fillRect(0,0,W,H);
+    g.fillStyle=B.defB.tint; g.globalAlpha=B.t; g.fillRect(0,0,W,H);
+    g.globalAlpha=1;
+    const dark=lerp(B.defA.dark,B.defB.dark,B.t);
+    if(dark>0){ g.fillStyle=`rgba(4,8,18,${dark})`; g.fillRect(0,0,W,H); }
+    /* Молнии только в зоне декора (сверху и по краям), не над полем */
+    if(weather.flash && S.flash && !S.lessFx){
+      const f=weather.flash;
+      const a=Math.max(0,f.t)*1.6;
+      if(a>0){
+        const rg=g.createRadialGradient(f.x,f.y,0,f.x,f.y,300);
+        rg.addColorStop(0,`rgba(230,240,255,${clamp(a,0,0.85)})`);
+        rg.addColorStop(1,'rgba(230,240,255,0)');
+        g.fillStyle=rg; g.beginPath(); g.arc(f.x,f.y,300,0,TAU); g.fill();
+      }
+    }
+    /* Туман — декоративный слой за игровым полем */
+    const fog=weather.fogAmount();
+    if(fog>0.02){
+      g.fillStyle=`rgba(215,225,240,${fog*0.16})`; g.fillRect(0,0,W,H);
+      for(let i=0;i<4;i++){
+        const x=((time*(18+i*9)+i*400)%(W+400))-200;
+        g.fillStyle=`rgba(220,230,245,${fog*0.1})`;
+        g.beginPath(); g.ellipse(x,H*(0.3+0.18*i),320,80,0,0,TAU); g.fill();
+      }
+    }
+  }
+}
+function r_(r,a,b){ return a+r()*(b-a); }
+const bgRenderer=new BackgroundRenderer();
+
+/* ---------- Ракетка: конечная скорость + инерция, никогда не телепортируется ---------- */
+class Paddle{
+  constructor(side){
+    this.side=side; // 'p' — игрок слева, 'a' — ИИ справа
+    this.w=CONFIG.paddle.width; this.baseH=CONFIG.paddle.height;
+    this.x=side==='p'?CONFIG.paddle.margin:W-CONFIG.paddle.margin;
+    this.y=H/2; this.vy=0; this.vySm=0; this.tilt=0; // наклон ЛКМ: +1 верхняя грань к мячу, -1 нижняя
+    this.megaT=0; this.miniT=0; this.shieldT=0; this.overdriveT=0; this.curveT=0; this.scoreBoostT=0;
+    this.hitFlash=0;
+  }
+  halfH(){ return this.baseH/2*(this.megaT>0?CONFIG.megaScale:1)*(this.miniT>0?CONFIG.miniScale:1); }
+  driveTo(target,maxSpeed,accel,dt){
+    /* Тормозящая модель: скорость, при которой ракетка остановится ровно в цели */
+    const err=target-this.y;
+    const vStop=Math.sign(err)*Math.min(maxSpeed,Math.sqrt(2*accel*Math.abs(err)));
+    this.vy=approach(this.vy,vStop,accel*dt);
+    this.y=clamp(this.y+this.vy*dt,this.halfH()+4,H-this.halfH()-4);
+  }
+  tickTimers(dt){
+    for(const k of ['megaT','miniT','shieldT','overdriveT','curveT','scoreBoostT'])
+      if(this[k]>0) this[k]=Math.max(0,this[k]-dt);
+    if(this.hitFlash>0) this.hitFlash=Math.max(0,this.hitFlash-dt*3);
+  }
+}
+
+/* ---------- Мяч ---------- */
+class Ball{
+  constructor(){ this.x=W/2; this.y=H/2; this.vx=0; this.vy=0; this.spin=0;
+    this.lastHitter=null; this.trail=[]; }
+  speed(){ return Math.hypot(this.vx,this.vy); }
+}
+
+/* ---------- Swept collision: сегмент против расширенного прямоугольника (Minkowski) ----------
+   Возвращает {t,axis,sign} — момент входа [0..1] и нормаль грани входа, либо null. */
+function sweepRect(px,py,cx,cy,rx0,ry0,rx1,ry1){
+  let t0=0,t1=1,ax=-1,sg=0;
+  const dx=cx-px, dy=cy-py;
+  // ось X
+  if(Math.abs(dx)<1e-9){ if(px<rx0||px>rx1) return null; }
+  else{
+    let ta=(rx0-px)/dx, tb=(rx1-px)/dx, s=-1;
+    if(dx<0){ [ta,tb]=[tb,ta]; s=1; }
+    if(ta>t0){ t0=ta; ax=0; sg=s; } if(tb<t1) t1=tb;
+    if(t0>t1) return null;
+  }
+  // ось Y
+  if(Math.abs(dy)<1e-9){ if(py<ry0||py>ry1) return null; }
+  else{
+    let ta=(ry0-py)/dy, tb=(ry1-py)/dy, s=-1;
+    if(dy<0){ [ta,tb]=[tb,ta]; s=1; }
+    if(ta>t0){ t0=ta; ax=1; sg=s; } if(tb<t1) t1=tb;
+    if(t0>t1) return null;
+  }
+  if(t0>1||t1<0) return null;
+  return {t:Math.max(0,t0),axis:ax,sign:sg};
+}
+
+const SPIN_ACCEL=210; // боковое ускорение от вращения (кривизна полёта)
+
+/* ---------- ИИ: прогноз точки встречи, задержка реакции, плавная ошибка ---------- */
+class ComputerAI{
+  constructor(levelIdx){
+    this.L=AI_LEVELS[levelIdx]; this.level=levelIdx;
+    this.targetY=H/2; this.rawTarget=H/2; this.errOffset=0;
+    this.predT=0; this.marker=null;
+  }
+  /* Симуляция траектории до плоскости ракетки ИИ с отражениями от стен;
+     на высоких уровнях — приближённый учёт ветра и spin'а. */
+  predictY(b,planeX,windX,windY){
+    if(b.vx<=0) return null;
+    let x=b.x,y=b.y,vx=b.vx,vy=b.vy,spin=b.spin;
+    const wf=this.L.windPredictionFactor, sf=this.L.spinPredictionFactor;
+    const r=CONFIG.ball.radius; let guard=0;
+    const dt=0.012;
+    while(x<planeX&&guard++<700){
+      vx+=windX*wf*dt; vy+=(windY*wf+(-vy/Math.max(1,Math.hypot(vx,vy)))*spin*SPIN_ACCEL*sf)*dt;
+      x+=vx*dt; y+=vy*dt;
+      if(y<r){ y=r; vy=Math.abs(vy); } else if(y>H-r){ y=H-r; vy=-Math.abs(vy); }
+    }
+    return clamp(y,r+4,H-r-4);
+  }
+  update(g,dt,now){
+    const r=CONFIG.ball.radius;
+    const planeX=g.aiPaddle.x-CONFIG.paddle.width/2-r-1;
+    const wa=g.weather.windAccel();
+    /* Обновляем прогноз не каждый кадр, а с заданным периодом */
+    this.predT-=dt;
+    if(this.predT<=0){
+      this.predT=this.L.predictionInterval;
+      /* реакция с задержкой: прогнозируем по снимку прошлого состояния мяча */
+      const b=this.delayedSnapshot(g);
+      if(b&&b.vx>0){
+        const py=this.predictY(b,planeX,wa.x,wa.y);
+        if(py!==null) this.rawTarget=py;
+        this.marker={x:planeX,y:py??this.rawTarget};
+      } else {
+        /* мяч летит от ИИ — не «знаем» будущий отскок, возвращаемся к разумной позиции */
+        const b0=g.ball;
+        this.rawTarget=H/2+this.L.idleCenterBias*(b0.y-H/2)*0.25;
+        this.marker=null;
+      }
+      /* Ошибка прогноза меняется плавно, а не хаотично */
+      const drift=(Math.random()*2-1)*this.L.errorPixels*0.35;
+      this.errOffset=clamp(this.errOffset*0.72+drift,-this.L.errorPixels,this.L.errorPixels);
+    }
+    this.targetY=clamp(this.rawTarget+this.errOffset,r+4,H-r-4);
+    g.aiPaddle.driveTo(this.targetY,this.L.maxSpeed,this.L.acceleration,dt);
+  }
+  delayedSnapshot(g){
+    const lag=this.L.reactionDelay;
+    const h=g.ballHist;
+    if(!h.length) return null;
+    const want=g.now-lag;
+    for(let i=0;i<h.length;i++) if(h[i].t>=want) return h[i];
+    return h[0];
+  }
+}
+
+/* ---------- Бонусы: 1 предмет на поле, 1 активный эффект на сторону ---------- */
+class PowerUpManager{
+  constructor(enabled,banned,fast){
+    this.enabled=enabled; this.banned=banned||[]; this.fast=fast||false;
+    this.item=null; this.spawnT=this.nextDelay();
+  }
+  nextDelay(){
+    const [a,b]=this.fast?[6,12]:[CONFIG.bonus.minSpawnSec,CONFIG.bonus.maxSpawnSec];
+    return a+Math.random()*(b-a);
+  }
+  update(g,dt){
+    if(!this.enabled) return;
+    if(g.state!=='PLAYING') return; // не спавним во время подачи/гола
+    if(!this.item){
+      this.spawnT-=dt;
+      if(this.spawnT<=0){
+        const ids=Object.keys(BONUS_DEFS).filter(id=>!this.banned.includes(id));
+        this.item={ id:ids[(Math.random()*ids.length)|0],
+          x:W*(0.3+Math.random()*0.4), y:H*(0.22+Math.random()*0.56), t:0 };
+        g.toast('На поле появился бонус: '+BONUS_DEFS[this.item.id].name);
+      }
+    } else this.item.t+=dt;
+    /* Подбор касанием мяча; владелец — последний ударивший мяч */
+    if(this.item){
+      const b=g.ball;
+      if(b.lastHitter&&Math.hypot(b.x-this.item.x,b.y-this.item.y)<CONFIG.ball.radius+20){
+        const side=b.lastHitter;
+        this.apply(g,side,this.item.id);
+        g.fx.burst(this.item.x,this.item.y,BONUS_DEFS[this.item.id].color);
+        audio.bonus();
+        this.item=null; this.spawnT=this.nextDelay();
+      }
+    }
+  }
+  /* mega — владельцу, mini — сопернику; взаимоисключения решаются таймерами */
+  apply(g,side,id){
+    const me=g[side==='p'?'playerPaddle':'aiPaddle'];
+    const op=g[side==='p'?'aiPaddle':'playerPaddle'];
+    const nm=BONUS_DEFS[id].name;
+    switch(id){
+      case 'mega': me.megaT=8; break;
+      case 'mini': op.miniT=5; break;
+      case 'slow': g.slowT=4; break;
+      case 'overdrive': me.overdriveT=6; break;
+      case 'shield': me.shieldT=10; break;
+      case 'windBreak': me.windBreakT=7; break;
+      case 'curve': me.curveT=8; break;
+      case 'scoreBoost': me.scoreBoostT=10; break;
+      case 'chaos': { // событие: предупреждение + резкий порыв и разворот ветра
+        const w=g.weather;
+        w.angleTarget=w.baseAngle+(Math.random()<0.5?-1:1)*(Math.PI/2+Math.random()*Math.PI/2);
+        w.gustActive=true; w.gustLeft=2.2; w.gustTarget=1.0; w.gustSmooth=0.3;
+        break;
+      }
+    }
+    g.toast((side==='p'?'Вы получили: ':'Соперник получил: ')+nm);
+  }
+  clearForServe(g){ // перед подачей — никаких бонусов, связанных с мячом
+    this.item=null; this.spawnT=this.nextDelay();
+    for(const p of [g.playerPaddle,g.aiPaddle]){
+      p.overdriveT=0; p.curveT=0; p.shieldT=0; p.scoreBoostT=0; p.megaT=0; p.miniT=0; p.windBreakT=0;
+    }
+    g.slowT=0;
+  }
+}
+
+/* ---------- Эффектные частицы ударов (бюджет ограничивается настройкой) ---------- */
+class Fx{
+  constructor(){ this.parts=[]; }
+  burst(x,y,color,n){
+    if(S.lessFx) return;
+    n=n||(8+(Math.random()*6|0));
+    if(this.parts.length>240) return;
+    for(let i=0;i<n;i++){
+      const a=Math.random()*TAU, s=80+Math.random()*220;
+      this.parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:0.5+Math.random()*0.4,color});
+    }
+  }
+  update(dt){
+    for(let i=this.parts.length-1;i>=0;i--){
+      const p=this.parts[i]; p.life-=dt;
+      if(p.life<=0){ this.parts.splice(i,1); continue; }
+      p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=1-2*dt; p.vy*=1-2*dt;
+    }
+  }
+  draw(g){
+    for(const p of this.parts){
+      g.fillStyle=p.color; g.globalAlpha=clamp(p.life*1.8,0,1);
+      g.beginPath(); g.arc(p.x,p.y,2.5,0,TAU); g.fill();
+    }
+    g.globalAlpha=1;
+  }
+}
+
+/* ============================ GAME: жизненный цикл и правила ============================ */
+class Game{
+  constructor(){
+    this.state='MENU';
+    this.cfg={mode:'idle'};
+    this.fx=new Fx(); this.toasts=[]; this.newAch=[];
+    this.score={p:0,a:0};
+    this.ball=new Ball();
+    this.playerPaddle=new Paddle('p'); this.aiPaddle=new Paddle('a');
+    this.weather=new WeatherSystem(0,true,'cosmetic',false);
+    this.pou=new PowerUpManager(false,[],false);
+    this.ai=new ComputerAI(2);
+    this.ballHist=[]; this.now=0; this.acc=0;
+    this.slowT=0; this.rally=0; this.maxRally=0; this.playerHits=0;
+    this.matchTime=0; this.server='p'; this.serveTimer=0; this.pointTimer=0;
+    this.lastScorer=null; this.prevPauseState='PLAYING'; this.serveTick=0; this.shake=0;
+  }
+  /* Фоновая сцена для меню/настроек: анимированный задник без матча */
+  initIdle(){
+    this.state='MENU';
+    this.weather=new WeatherSystem(0,true,'cosmetic',false);
+    bgRenderer.setTheme(0,0);
+  }
+  /* Запуск матча по конфигу из экрана настройки режима */
+  startMatch(c){
+    this.cfg=c;
+    this.score={p:0,a:0};
+    this.ball=new Ball();
+    this.playerPaddle=new Paddle('p'); this.aiPaddle=new Paddle('a');
+    this.weather=new WeatherSystem(c.seasonIdx,c.dynamicWeather,c.windMode,c.chaos);
+    this.pou=new PowerUpManager(c.bonusesOn,c.competitive?COMPETITIVE_BANNED:[],c.mode==='storm');
+    this.ai=new ComputerAI(c.difficulty);
+    this.ballHist=[]; this.now=0; this.acc=0; this.slowT=0;
+    this.rally=0; this.maxRally=0; this.playerHits=0; this.matchTime=0;
+    this.toasts=[]; this.newAch=[];
+    bgRenderer.setTheme(c.seasonIdx,c.locIdx);
+    this.server=Math.random()<0.5?'p':'a';
+    this.beginServe();
+    audio.gesture(); audio.startMusic();
+  }
+  beginServe(){
+    this.pou.clearForServe(this);
+    this.state='SERVE';
+    this.serveTimer=CONFIG.match.serveCountdownSec; this.serveTick=99;
+    this.rally=0;
+    const b=this.ball;
+    b.vx=0; b.vy=0; b.spin=0; b.lastHitter=null; b.trail.length=0;
+    this.playerPaddle.tilt=0; this.aiPaddle.tilt=0;
+    const p=this.server==='p'?this.playerPaddle:this.aiPaddle;
+    b.x=p.side==='p'?p.x+p.w/2+CONFIG.ball.radius+6:this.aiPaddle.x-p.w/2-CONFIG.ball.radius-6;
+    b.y=p.y;
+  }
+  /* Подача: угол 15..60° от горизонтали, смещённый к центру поля */
+  serveNow(){
+    const b=this.ball;
+    const dir=this.server==='p'?1:-1;
+    const ang=(15+Math.random()*45)*Math.PI/180;
+    const vySign=b.y<H/3?1:(b.y>2*H/3?-1:(Math.random()<0.5?-1:1));
+    const sp=CONFIG.ball.serveSpeed*(this.cfg.serveSpeedFactor||1);
+    b.vx=Math.cos(ang)*sp*dir; b.vy=Math.sin(ang)*sp*vySign;
+    this.state='PLAYING';
+  }
+  togglePause(){
+    if(this.state==='PAUSED') this.resume();
+    else if(['SERVE','PLAYING','POINT'].includes(this.state)){
+      this.prevPauseState=this.state; this.state='PAUSED';
+      audio.duck(true); ui.showPanel('pause');
+    }
+  }
+  resume(){ if(this.state==='PAUSED'){ this.state=this.prevPauseState; this.acc=0; audio.duck(false); ui.showPanel(null); } }
+  toMenu(){ this.state='MENU'; audio.duck(false); this.initIdle(); ui.showPanel('menu'); }
+  restartMatch(){ ui.hideAll(); this.startMatch(this.cfg); }
+  /* Горячие клавиши */
+  handleKey(k){
+    if(k==='KeyM'){
+      S.soundOn=!S.soundOn; saveSettings(); audio.gesture(); audio.applyVolumes();
+      if(S.soundOn) audio.startMusic();
+      ui.syncMute(); this.toast(S.soundOn?'Звук включён':'Звук выключен');
+      return;
+    }
+    if(this.state==='PAUSED'){
+      if(k==='Space'||k==='Escape'||k==='Enter') this.resume();
+      return;
+    }
+    if(['SERVE','PLAYING','POINT'].includes(this.state)){
+      if(k==='Space'||k==='Escape') this.togglePause();
+    }
+  }
+  toast(text){
+    this.toasts.push({text,t:3.2});
+    if(this.toasts.length>4) this.toasts.shift();
+  }
+  updateToasts(dt){ for(const t of this.toasts) t.t-=dt; this.toasts=this.toasts.filter(t=>t.t>0); }
+  award(id,name){
+    if(!R.ach[id]){ R.ach[id]=true; saveRecords(); this.newAch.push(name); this.toast('🏆 Достижение: '+name); }
+  }
+  /* Кадровый цикл: аккумулятор + фиксированный шаг; пауза полностью замораживает */
+  updateFrame(frameDt){
+    const dt=Math.min(frameDt,CONFIG.maxFrameDt); // защита от гигантского шага
+    this.shake=Math.max(0,this.shake-dt*1.6);
+    if(this.state==='PAUSED'||this.state==='RESULTS') { this.updateToasts(dt); return; }
+    this.acc+=dt;
+    let n=0;
+    while(this.acc>=CONFIG.fixedDt&&n<CONFIG.maxSubsteps){ this.updateFixed(CONFIG.fixedDt); this.acc-=CONFIG.fixedDt; n++; }
+    if(n>=CONFIG.maxSubsteps) this.acc=0; // не уходим в спираль дофизики
+    this.fx.update(dt); this.updateToasts(dt);
+  }
+  updateFixed(dt){
+    this.now+=dt;
+    bgRenderer.update(dt);
+    this.weather.update(dt);
+    /* буфер истории мяча для «задержки реакции» ИИ */
+    const b=this.ball;
+    this.ballHist.push({x:b.x,y:b.y,vx:b.vx,vy:b.vy,spin:b.spin,t:this.now});
+    if(this.ballHist.length>140) this.ballHist.splice(0,this.ballHist.length-140);
+    if(this.state==='MENU'){ return; }
+    this.matchTime+=dt;
+    for(const p of [this.playerPaddle,this.aiPaddle]) p.tickTimers(dt);
+    if(this.slowT>0) this.slowT=Math.max(0,this.slowT-dt);
+    if(this.state==='SERVE'){
+      this.controlPlayer(dt);
+      const p=this.server==='p'?this.playerPaddle:this.aiPaddle;
+      b.y=p.y; b.x=p.side==='p'?p.x+p.w/2+CONFIG.ball.radius+6:this.aiPaddle.x-p.w/2-CONFIG.ball.radius-6;
+      const tickLeft=Math.ceil(this.serveTimer);
+      if(tickLeft!==this.serveTick){ this.serveTick=tickLeft; if(tickLeft>=0) audio.countdown(tickLeft===0); }
+      this.serveTimer-=dt;
+      if(this.serveTimer<=0) this.serveNow();
+      return;
+    }
+    if(this.state==='POINT'){
+      this.pointTimer-=dt;
+      if(this.pointTimer<=0) this.afterPoint();
+      return;
+    }
+    if(this.state==='PLAYING'){
+      this.controlPlayer(dt);
+      this.ai.update(this,dt,this.now);
+      this.pou.update(this,dt);
+      this.stepPhysics(dt);
+    }
+  }
+  /* Управление ракеткой игрока (клавиатура приоритетнее прямого слежения) */
+  controlPlayer(dt){
+    const pp=this.playerPaddle;
+    const dirv=input.keyDir();
+    let inst=0; // мгновенная скорость указателя/ракетки для определения направления
+    if(dirv!==0){
+      pp.driveTo(pp.y+dirv*600,CONFIG.paddle.maxSpeed,CONFIG.paddle.acceleration,dt);
+      inst=pp.vy;
+    } else if(input.lastInput==='mouse'||input.lastInput==='touch'){
+      /* Ноль инерции: мышь/тач — ракетка точно в позиции указателя.
+         vy сглаживаем, иначе на подшагах без нового движения он обнуляется и наклон/подкрутка пропадают */
+      const hh=pp.halfH()+4;
+      const t=clamp(input.paddleTarget(),hh,H-hh);
+      const raw=(t-pp.y)/dt; // мгновенная скорость; растёт сразу, гаснется за ~0.3-0.7 с,
+      inst=raw;
+      pp.vy=Math.abs(raw)>Math.abs(pp.vy)?raw:approach(pp.vy,0,2000*dt); // чтобы наклон/спин жили и на подшагах без новых событий мыши
+      pp.y=t;
+    } else pp.vy=approach(pp.vy,0,4000*dt); // клавиши отпущены — ракетка стоит, скорость гаснем
+    /* Наклон ракетки: зажатая ЛКМ + движение — верхняя грань к мячу при движении вверх, нижняя при движении вниз.
+       vySm — ЭМА скорости самого указателя (не ракетного vy): направление меняется за ~0.06 с,
+       «мерцания» между подшагами нет, а при паузе с зажатой ЛКМ наклон удерживается */
+    pp.vySm+=(inst-pp.vySm)*Math.min(1,16*dt);
+    if(pp===this.playerPaddle&&input.mouseDown){
+      if(Math.abs(pp.vySm)>25) pp.tilt=approach(pp.tilt,-Math.sign(pp.vySm),CONFIG.paddle.tiltRate*dt);
+    } else {
+      pp.vySm=approach(pp.vySm,0,6000*dt);
+      pp.tilt=approach(pp.tilt,0,CONFIG.paddle.tiltRate*dt);
+    }
+  }
+}
+
+/* -------- Физика матча: продолжение Game -------- */
+Object.assign(Game.prototype,{
+  stepPhysics(dt){
+    const b=this.ball, r=CONFIG.ball.radius;
+    /* Ускорения: ветер (гасится Wind Breaker'ом) и кривизна от spin'а */
+    const wb=this.playerPaddle.windBreakT>0||this.aiPaddle.windBreakT>0;
+    if(!wb){ const wa=this.weather.windAccel(); b.vx+=wa.x*dt; b.vy+=wa.y*dt; }
+    const sp0=b.speed();
+    if(Math.abs(b.spin)>0.01&&sp0>1){
+      const a=b.spin*SPIN_ACCEL;
+      b.vx+=(-b.vy/sp0)*a*dt; b.vy+=(b.vx/sp0)*a*dt;
+      b.spin*=Math.max(0,1-0.3*dt);
+      if(Math.abs(b.spin)>1.4) b.spin=Math.sign(b.spin)*1.4;
+    }
+    const sp=b.speed();
+    if(sp>CONFIG.ball.maxSpeed){ const k=CONFIG.ball.maxSpeed/sp; b.vx*=k; b.vy*=k; }
+    /* Предотвращение почти вертикального «бесконечного» полёта */
+    if(Math.abs(b.vx)<0.22*Math.max(sp,1)) b.vx=(Math.sign(b.vx)||1)*(0.3*Math.max(sp,240)+40);
+    /* Движение с swept-разрешением столкновений: стены, ракетки — раньше по времени */
+    let rem=dt, guard=0;
+    while(rem>1e-9&&guard++<5){
+      let bestT=rem, kind=null, data=null;
+      if(b.vy<0){ const t=(r-b.y)/b.vy; if(t>=0&&t<bestT){bestT=t;kind='wall';data=null;} }
+      else if(b.vy>0){ const t=(H-r-b.y)/b.vy; if(t>=0&&t<bestT){bestT=t;kind='wall';data=null;} }
+      const nx=b.x+b.vx*rem, ny=b.y+b.vy*rem;
+      for(const p of [this.playerPaddle,this.aiPaddle]){
+        if(p.side==='p'&&b.vx>=0) continue; // учитываем только сближение
+        if(p.side==='a'&&b.vx<=0) continue;
+        const res=sweepRect(b.x,b.y,nx,ny,
+          p.x-p.w/2-r, p.y-p.halfH()-r, p.x+p.w/2+r, p.y+p.halfH()+r);
+        if(res&&res.t<bestT){ bestT=res.t; kind='paddle'; data={p,axis:res.axis,sign:res.sign}; }
+      }
+      b.x+=b.vx*bestT; b.y+=b.vy*bestT; rem-=bestT;
+      if(kind==='wall'){ b.vy=-b.vy; b.y=clamp(b.y,r,H-r); audio.wall(); }
+      else if(kind==='paddle'){ this.hitPaddle(data.p,data.axis,data.sign); break; }
+    }
+    /* Ghost trail — след мяча */
+    b.trail.push({x:b.x,y:b.y}); if(b.trail.length>7) b.trail.shift();
+    /* Shield — спасение от гола на защитной линии */
+    const pp=this.playerPaddle, ap=this.aiPaddle;
+    if(pp.shieldT>0&&b.vx<0&&b.x<r+8){
+      b.vx=Math.abs(b.vx); b.x=r+8; pp.shieldT=0;
+      this.fx.burst(b.x,b.y,'#38bdf8',16); audio.perfect(); this.toast('Shield отбил гол!');
+    } else if(ap.shieldT>0&&b.vx>0&&b.x>W-r-8){
+      b.vx=-Math.abs(b.vx); b.x=W-r-8; ap.shieldT=0;
+      this.fx.burst(b.x,b.y,'#fb7185',16); audio.perfect(); this.toast('Shield отбил гол соперника!');
+    }
+    /* Гол — только когда мяч полностью пересёк границу; защита от двойного засчёта */
+    if(b.x+r<0) this.pointScored('a');
+    else if(b.x-r>W) this.pointScored('p');
+  },
+  hitPaddle(p,axis,sign){
+    const b=this.ball, r=CONFIG.ball.radius;
+    if(axis===1){ b.vy=-b.vy; b.y+=sign*0.8; audio.wall(); return; } // край ракетки
+    const dir=p.side==='p'?1:-1;
+    const off=clamp((b.y-p.y)/(p.halfH()+r),-1,1); // край → более острый угол
+    let a=off*CONFIG.ball.maxBounceAngleDeg*Math.PI/180;
+    a+=p.tilt*CONFIG.paddle.tiltAngleDeg*Math.PI/180*dir; // наклон гранью меняет угол вылета
+    let speed=b.speed()*(CONFIG.ball.rallyGain+Math.min(0.012,this.rally*0.0006)); // комбо-бонус ограничен
+    /* Удар наклонённой к мячу гранью — сильнее (до +50%); в «уведённую» сторону — без штрафа.
+       off>0 = удар ниже центра, tilt>0 = верхняя грань к мячу → наклонённый край это tilt*off<0 */
+    if(p.tilt*off<0) speed*=1+CONFIG.paddle.tiltSpeedBonus*Math.abs(p.tilt);
+    /* Perfect Return: точный центр на быстром мяче */
+    if(Math.abs(off)<0.16&&speed>CONFIG.ball.serveSpeed*1.2){
+      audio.perfect(); this.fx.burst(b.x,b.y,'#e0f2fe',14);
+      if(p.side==='p') this.toast('Perfect Return!');
+      speed=Math.min(speed*1.03,CONFIG.ball.maxSpeed);
+    }
+    speed=clamp(speed,240,CONFIG.ball.maxSpeed);
+    b.vx=dir*Math.cos(a)*speed;
+    /* Вклад движения ракетки ограничен сверху — рывок мыши не должен «выстреливать» мяч бесконечно */
+    const pvy=clamp(p.vy,-900,900);
+    b.vy=Math.sin(a)*speed+pvy*0.35; // влияние движения ракетки
+    b.spin=clamp(b.spin+pvy*0.0035,-1.4,1.4); // подкрутка: движение ракетки закручивает мяч
+    if(p.curveT>0){ p.curveT=0; b.spin=clamp(b.spin+(pvy>=0?0.9:-0.9),-1.4,1.4); this.toast('Curve Shot!'); }
+    if(p.overdriveT>0){
+      p.overdriveT=0;
+      const k=Math.min(CONFIG.ball.maxSpeed,speed*1.28)/Math.hypot(b.vx,b.vy);
+      b.vx*=k; b.vy*=k; this.toast('Overdrive!'); this.fx.burst(b.x,b.y,'#fbbf24',14);
+    }
+    b.x+=dir*1.2; // развести объекты после столкновения
+    b.lastHitter=p.side; p.hitFlash=1;
+    this.rally++; this.maxRally=Math.max(this.maxRally,this.rally);
+    if(p.side==='p') this.playerHits++;
+    if(this.rally>=10) this.award('rally10','10 ударов в розыгрыше');
+    if(this.rally===5||this.rally===10||this.rally===20){
+      this.toast('Комбо ×'+this.rally); if(p.side==='p') audio.perfect();
+    }
+    audio.hit(speed/CONFIG.ball.maxSpeed);
+    this.fx.burst(b.x,b.y,p.side==='p'?CONFIG.colors.player:CONFIG.colors.ai,8);
+  },
+  pointScored(scorer){
+    if(this.state==='POINT') return; // единственный засчёт на розыгрыш
+    this.state='POINT'; this.pointTimer=1.15; this.lastScorer=scorer;
+    const sp=scorer==='p'?this.playerPaddle:this.aiPaddle;
+    let pts=1;
+    if(sp.scoreBoostT>0){ sp.scoreBoostT=0; pts=2; this.toast('Score Boost: +2 очка!'); }
+    this.score[scorer]+=pts;
+    const b=this.ball; b.vx=0; b.vy=0; b.spin=0; b.x=clamp(b.x,14,W-14);
+    audio.goal(scorer==='p');
+    this.shake=S.lessFx?0:0.35;
+  },
+  afterPoint(){
+    const c=this.cfg, w=c.winningScore, {p,a}=this.score;
+    /* Тренировка с ограничением по времени завершается по истечении длительности */
+    if(c.durationSec&&this.matchTime>=c.durationSec){ this.endMatch(p>=a?'p':'a'); return; }
+    if(w&&(p>=w||a>=w)&&Math.abs(p-a)>=CONFIG.match.winBy){ this.endMatch(p>a?'p':'a'); return; }
+    this.server=this.lastScorer==='p'?'a':'p'; // после гола подаёт проигравший розыгрыш
+    this.beginServe();
+  },
+  endMatch(winner){
+    this.state='RESULTS'; audio.duck(true);
+    R.games++;
+    if(winner==='p'&&this.cfg.mode!=='training'){
+      R.wins++;
+      this.award('firstWin','Первая победа');
+      if(this.score.a===0) this.award('cleanSweep','Победа всухую');
+      if(this.weather.cur==='blizzard') this.award('blizzardWin','Победа в метель');
+      const sid=SEASONS[this.cfg.seasonIdx].id;
+      R.seasonsWon[sid]=true;
+      if(SEASONS.every(s=>R.seasonsWon[s.id])) this.award('allSeasons','Все четыре сезона');
+    }
+    R.bestRally=Math.max(R.bestRally,this.maxRally);
+    saveRecords();
+    if(winner==='p') audio.win(); else audio.lose();
+    this.newAchShown=true;
+    ui.showResults(this,winner);
+  },
+  /* Треугольная «свёртка» координаты: предсказание точки на плоскости игрока (подсказка/гайд) */
+  predictPlayerPlane(){
+    const b=this.ball, r=CONFIG.ball.radius;
+    if(b.vx>=0) return null;
+    const plane=this.playerPaddle.x-this.playerPaddle.w/2-r;
+    const t=(plane-b.x)/b.vx; if(t<0) return null;
+    const range=H-2*r;
+    let yy=b.y-r+b.vy*t;
+    yy=((yy%(2*range))+2*range)%(2*range);
+    if(yy>range) yy=2*range-yy;
+    return r+yy;
+  },
+  /* Полилиния траектории для режима тренировки */
+  guidePoints(){
+    const b=this.ball, r=CONFIG.ball.radius;
+    let x=b.x,y=b.y,vx=b.vx,vy=b.vy; const pts=[{x,y}];
+    for(let i=0;i<200&&(x>40||vx<0);i++){
+      const dt=0.01; x+=vx*dt; y+=vy*dt;
+      if(y<r){y=r;vy=-vy;} else if(y>H-r){y=H-r;vy=-vy;}
+      if(x<30||x>W-30) break;
+      if(i%3===0) pts.push({x,y});
+    }
+    return pts;
+  }
+});
+
+/* ============================ РЕНДЕР: поле, сущности, HUD ============================ */
+let FPS=60;
+const Renderer={
+  draw(alpha){
+    const g=ctx;
+    g.setTransform(view.dpr,0,0,view.dpr,0,0);
+    g.fillStyle='#04060b'; g.fillRect(0,0,innerWidth,innerHeight);
+    g.save();
+    /* тряска экрана (визуальный эффект, не игровое состояние) */
+    let shx=0,shy=0;
+    if(game.shake>0){ const m=game.shake*8; shx=Math.sin(game.now*47)*m; shy=Math.cos(game.now*61)*m; }
+    g.translate(view.ox+shx,view.oy+shy);
+    g.scale(view.s,view.s);
+    g.save(); g.beginPath(); g.rect(0,0,W,H); g.clip();
+    bgRenderer.draw(g,game.weather,game.now);
+    this.drawField(g);
+    game.weather.drawParticles(g);
+    game.fx.draw(g);
+    this.drawEntities(g);
+    if(['SERVE','PLAYING','POINT','PAUSED'].includes(game.state)) this.drawHUD(g);
+    this.drawToasts(g);
+    g.restore();
+    g.restore();
+  },
+  drawField(g){
+    /* Полупрозрачная панель поля: фон читается, но площадка остаётся контрастной */
+    g.fillStyle=S.contrast?'rgba(4,8,16,0.86)':'rgba(9,14,26,0.52)';
+    g.fillRect(0,0,W,H);
+    /* светящиеся бортики сверху/снизу */
+    if(!S.lessFx){
+      for(const y of [0,H-6]){
+        const grd=g.createLinearGradient(0,y,0,y+6);
+        grd.addColorStop(0,'rgba(125,211,252,0.5)'); grd.addColorStop(1,'rgba(125,211,252,0)');
+        g.fillStyle=grd; g.fillRect(0,y===0?0:H-6,W,6);
+      }
+    }
+    g.strokeStyle=S.contrast?'rgba(190,215,245,0.75)':'rgba(150,190,235,0.3)';
+    g.lineWidth=2; g.strokeRect(3,3,W-6,H-6);
+    g.setLineDash([14,18]); g.strokeStyle='rgba(150,190,235,0.22)';
+    g.beginPath(); g.moveTo(W/2,8); g.lineTo(W/2,H-8); g.stroke(); g.setLineDash([]);
+    /* защитная линия Shield */
+    const drawShield=(p,x,color)=>{
+      if(p.shieldT<=0) return;
+      const pulse=0.35+0.25*Math.sin(game.now*6);
+      g.strokeStyle=color; g.globalAlpha=pulse; g.lineWidth=3;
+      g.beginPath(); g.moveTo(x,6); g.lineTo(x,H-6); g.stroke(); g.globalAlpha=1;
+    };
+    drawShield(game.playerPaddle,16,CONFIG.colors.player);
+    drawShield(game.aiPaddle,W-16,CONFIG.colors.ai);
+  },
+  drawEntities(g){
+    /* траектория: явная в контрастном режиме и в тренировке с гайдом */
+    if(S.contrast||(game.cfg.mode==='training'&&game.cfg.guide)){
+      const pts=game.guidePoints();
+      if(pts.length>1&&game.ball.speed()>1){
+        g.strokeStyle='rgba(255,255,255,0.3)'; g.lineWidth=1.5; g.setLineDash([6,10]);
+        g.beginPath(); g.moveTo(pts[0].x,pts[0].y);
+        for(const p of pts) g.lineTo(p.x,p.y);
+        g.stroke(); g.setLineDash([]);
+      }
+    }
+    /* магнитная подсказка точки встречи на лёгких уровнях (не автопомощь) */
+    if(S.hint&&game.state==='PLAYING'&&game.cfg.difficulty<=1){
+      const py=game.predictPlayerPlane();
+      if(py!==null){
+        g.strokeStyle='rgba(125,211,252,0.5)'; g.lineWidth=2;
+        g.beginPath(); g.arc(game.playerPaddle.x-game.playerPaddle.w/2-CONFIG.ball.radius,py,16,0,TAU); g.stroke();
+      }
+    }
+    /* отладка: цель ИИ и реальная точка пересечения */
+    if(S.debug&&game.ai.marker&&game.state==='PLAYING'){
+      const m=game.ai.marker;
+      g.strokeStyle='#f472b6'; g.lineWidth=2;
+      g.beginPath(); g.arc(m.x,m.y,10,0,TAU); g.stroke();
+      const real=game.ai.predictY(game.ball,m.x,0,0);
+      if(real!==null){ g.strokeStyle='#fbbf24';
+        g.beginPath(); g.arc(m.x,real,14,0,TAU); g.stroke(); }
+      g.fillStyle='#9fb4d8'; g.font='13px system-ui';
+      g.fillText('FPS '+Math.round(FPS),12,H-14);
+    }
+    /* бонус на поле */
+    const it=game.pou.item;
+    if(it){
+      const d=BONUS_DEFS[it.id], pulse=1+0.12*Math.sin(it.t*4);
+      g.save(); g.translate(it.x,it.y); g.scale(pulse,pulse);
+      if(!S.lessFx){ g.shadowColor=d.color; g.shadowBlur=24; }
+      g.fillStyle='rgba(10,16,28,0.85)'; g.beginPath(); g.arc(0,0,22,0,TAU); g.fill();
+      g.strokeStyle=d.color; g.lineWidth=3; g.beginPath(); g.arc(0,0,22,0,TAU); g.stroke();
+      g.shadowBlur=0; g.fillStyle=d.color; g.font='700 20px system-ui';
+      g.textAlign='center'; g.textBaseline='middle'; g.fillText(d.icon,0,1);
+      g.restore(); g.textAlign='left'; g.textBaseline='alphabetic';
+    }
+    /* ракетки */
+    this.drawPaddle(g,game.playerPaddle,CONFIG.colors.player);
+    this.drawPaddle(g,game.aiPaddle,CONFIG.colors.ai);
+    /* мяч: ghost trail + сам мяч */
+    const b=game.ball, r=CONFIG.ball.radius;
+    if(['SERVE','PLAYING','POINT'].includes(game.state)){
+      if(!S.lessFx){
+        b.trail.forEach((t,i)=>{
+          g.fillStyle=`rgba(255,255,255,${0.03+0.09*i/b.trail.length})`;
+          g.beginPath(); g.arc(t.x,t.y,r*(0.45+0.08*i),0,TAU); g.fill();
+        });
+      }
+      if(!S.contrast&&!S.lessFx){ g.shadowColor='#ffffff'; g.shadowBlur=18; }
+      if(S.contrast){
+        g.fillStyle='#ffffff'; g.beginPath(); g.arc(b.x,b.y,r,0,TAU); g.fill();
+        g.strokeStyle='#0b1220'; g.lineWidth=2.5; g.beginPath(); g.arc(b.x,b.y,r,0,TAU); g.stroke();
+      } else {
+        const grd=g.createRadialGradient(b.x-r*0.4,b.y-r*0.4,1,b.x,b.y,r);
+        grd.addColorStop(0,'#ffffff'); grd.addColorStop(1,'#c7d2fe');
+        g.fillStyle=grd; g.beginPath(); g.arc(b.x,b.y,r,0,TAU); g.fill();
+        g.shadowBlur=0;
+      }
+      g.shadowBlur=0;
+    }
+  },
+  drawPaddle(g,p,color){
+    const hh=p.halfH();
+    if(!S.lessFx){ g.shadowColor=color; g.shadowBlur=p.hitFlash>0?26:12; }
+    g.fillStyle=p.hitFlash>0?'#ffffff':color;
+    const rad=Math.min(p.w/2,8);
+    /* Наклон ЛКМ — поворот вокруг центра: длина ракетки не «подрезается»,
+       грань, заданная наклоном, смотрит в сторону мяча */
+    const ang=(p.tilt||0)*Math.atan2(CONFIG.paddle.tiltPx,hh)*(p.side==='p'?1:-1);
+    g.save();
+    g.translate(p.x,p.y);
+    if(Math.abs(ang)>0.01) g.rotate(ang);
+    g.beginPath();
+    if(g.roundRect) g.roundRect(-p.w/2,-hh,p.w,2*hh,rad); else g.rect(-p.w/2,-hh,p.w,2*hh);
+    g.fill();
+    if(S.contrast){ g.strokeStyle='#0b1220'; g.lineWidth=2.5; g.stroke(); }
+    g.restore();
+    g.shadowBlur=0;
+  },
+  drawHUD(g){
+    const s=game.score;
+    g.textAlign='center';
+    g.font='700 60px system-ui'; g.fillStyle='rgba(230,240,255,0.92)';
+    g.fillText(s.p,W/2-80,84); g.fillText(s.a,W/2+80,84);
+    g.font='600 13px system-ui'; g.fillStyle='#8fb3e0';
+    g.fillText('ВЫ',W/2-80,104); g.fillText('CPU',W/2+80,104);
+    /* режим, сложность, сезон/погода */
+    g.font='500 13px system-ui'; g.fillStyle='#9fb4d8'; g.textAlign='left';
+    const c=game.cfg;
+    const modeName={quick:'Быстрый матч',tour:'Тур сезонов',storm:'Штормовой вызов',training:'Тренировка',idle:''}[c.mode]||'';
+    let top1=modeName;
+    if(c.mode==='tour') top1+=` · Глава ${c.tourIdx+1}/4 · ${SEASONS[c.seasonIdx].name}`;
+    else if(c.seasonIdx!==undefined) top1+=` · ${SEASONS[c.seasonIdx].name}: ${SEASONS[c.seasonIdx].locations[c.locIdx].name}`;
+    g.fillText(top1,14,24);
+    if(c.mode!=='training'&&c.mode!=='idle') g.fillText('До '+c.winningScore+' очков (разница 2) · Погода: '+WEATHER_DEFS[game.weather.cur].name,14,42);
+    else if(c.mode==='training') g.fillText('Тренировка · Погода: '+WEATHER_DEFS[game.weather.cur].name,14,42);
+    /* индикатор ветра: стрелка + шкала */
+    if(c.mode!=='idle'){
+      const w=game.weather, cx=W/2, cy=132;
+      const strength=w.intensity;
+      const label=strength<0.15?'штиль':strength<0.35?'слабый':strength<0.65?'умеренный':'сильный';
+      const len=10+clamp(strength,0,1.7)*34;
+      g.strokeStyle='rgba(200,225,255,0.85)'; g.lineWidth=3;
+      g.beginPath(); g.moveTo(cx-w.dirX*len,cy-w.dirY*len); g.lineTo(cx+w.dirX*len,cy+w.dirY*len); g.stroke();
+      const ax=cx+w.dirX*len, ay=cy+w.dirY*len, a=Math.atan2(w.dirY,w.dirX);
+      g.beginPath(); g.moveTo(ax,ay);
+      g.lineTo(ax-Math.cos(a-0.5)*10,ay-Math.sin(a-0.5)*10);
+      g.lineTo(ax-Math.cos(a+0.5)*10,ay-Math.sin(a+0.5)*10);
+      g.closePath(); g.fillStyle='rgba(200,225,255,0.85)'; g.fill();
+      g.font='500 12px system-ui'; g.textAlign='center'; g.fillStyle='#9fb4d8';
+      g.fillText('Ветер: '+label+(w.windMode==='cosmetic'?' (косметика)':w.windMode==='storm'?' (шторм)':''),cx,cy+30);
+    }
+    /* активные бонусы с таймерами */
+    const chip=(p,right)=>{
+      const act=[];
+      if(p.megaT>0)act.push(['Mega',p.megaT,'#4ade80']);
+      if(p.miniT>0)act.push(['Mini',p.miniT,'#f87171']);
+      if(p.shieldT>0)act.push(['Shield',p.shieldT,'#38bdf8']);
+      if(p.windBreakT>0)act.push(['Ветер-лок',p.windBreakT,'#2dd4bf']);
+      if(p.overdriveT>0)act.push(['Overdrive',p.overdriveT,'#fbbf24']);
+      if(p.curveT>0)act.push(['Curve',p.curveT,'#e879f9']);
+      if(p.scoreBoostT>0)act.push(['×2 гол',p.scoreBoostT,'#f472b6']);
+      if(!act.length) return;
+      g.font='600 13px system-ui';
+      const widths=act.map(([name,tv])=>g.measureText(name+' '+Math.ceil(tv)+'с').width+16);
+      const total=widths.reduce((a,b)=>a+b+6,0);
+      let x=right?W-14-total:14; // чипы ИИ выравниваем по правому краю
+      act.forEach(([name,tv,col],i)=>{
+        g.fillStyle='rgba(10,16,28,0.75)';
+        g.fillRect(x,56,widths[i],24);
+        g.strokeStyle=col; g.lineWidth=1.5; g.strokeRect(x,56,widths[i],24);
+        g.fillStyle=col; g.textAlign='left';
+        g.fillText(name+' '+Math.ceil(tv)+'с',x+8,72);
+        x+=widths[i]+6;
+      });
+    };
+    chip(game.playerPaddle,false);
+    chip(game.aiPaddle,true);
+    if(game.slowT>0){ g.textAlign='center'; g.fillStyle='#a78bfa'; g.font='600 14px system-ui';
+      g.fillText('Slow Motion '+Math.ceil(game.slowT)+'с',W/2,H-24); }
+    /* комбо розыгрыша */
+    if(game.rally>=2&&game.state==='PLAYING'){
+      g.textAlign='center'; g.fillStyle='rgba(200,225,255,0.8)'; g.font='600 15px system-ui';
+      g.fillText('Розыгрыш: '+game.rally,W/2,H-24);
+    }
+    /* отсчёт подачи */
+    if(game.state==='SERVE'){
+      const t=Math.max(0,game.serveTimer);
+      const ring=1-(game.serveTimer%1);
+      g.strokeStyle='rgba(255,255,255,0.5)'; g.lineWidth=4;
+      g.beginPath(); g.arc(W/2,H/2,40,-Math.PI/2,-Math.PI/2+ring*TAU); g.stroke();
+      g.fillStyle='rgba(255,255,255,0.9)'; g.font='700 44px system-ui'; g.textAlign='center';
+      g.fillText(Math.ceil(t),W/2,H/2+16);
+      g.font='500 14px system-ui'; g.fillStyle='#9fb4d8';
+      g.fillText(game.server==='p'?'Ваша подача':'Подаёт соперник',W/2,H/2+70);
+    }
+    /* вспышка очка (Cinematic Point) */
+    if(game.state==='POINT'){
+      const t=game.pointTimer;
+      const a=clamp(t/1.15,0,1);
+      g.globalAlpha=a;
+      g.fillStyle='rgba(255,255,255,0.08)'; g.fillRect(0,0,W,H);
+      g.font=`700 ${64+ (1-a)*30}px system-ui`; g.textAlign='center';
+      g.fillStyle=game.lastScorer==='p'?CONFIG.colors.player:CONFIG.colors.ai;
+      const mult=S.lessFx?0:Math.sin(t*10)*4;
+      g.fillText(game.lastScorer==='p'?'ОЧКО!':'ПРОПУЩЕНО',W/2,H/2-40+mult);
+      g.globalAlpha=1;
+    }
+    g.textAlign='left';
+  },
+  drawToasts(g){
+    g.font='500 15px system-ui'; g.textAlign='center';
+    game.toasts.forEach((t,i)=>{
+      const a=clamp(t.t,0,1)*clamp(3.2-t.t,0,1);
+      g.fillStyle=`rgba(230,240,255,${0.9*a})`;
+      g.fillText(t.text,W/2,H-70-i*26);
+    });
+    g.textAlign='left';
+  }
+};
+
+/* ============================ UI: панели, настройка режимов, рекорды ============================ */
+const ACH_NAMES={firstWin:'Первая победа',rally10:'10 ударов в розыгрыше',blizzardWin:'Победа в метель',
+  cleanSweep:'Победа всухую',allSeasons:'Все четыре сезона'};
+const TOUR_DIFFS=[1,2,3,4]; // Любитель → Легенда по главам
+function el(id){ return document.getElementById(id); }
+function chipGroup(parent,opts,current,onPick){
+  const wrap=document.createElement('div'); wrap.className='chips'; wrap.style.marginTop='6px';
+  for(const o of opts){
+    const b=document.createElement('button'); b.type='button';
+    b.className='chipbtn'+(String(o.val)===String(current)?' sel':''); b.textContent=o.label;
+    b.onclick=()=>{ audio.gesture();
+      for(const c of wrap.children) c.classList.remove('sel');
+      b.classList.add('sel'); onPick(o.val); };
+    wrap.appendChild(b);
+  }
+  parent.appendChild(wrap); return wrap;
+}
+function fieldset(parent,label){
+  const fs=document.createElement('fieldset');
+  const lg=document.createElement('legend'); lg.textContent=label; fs.appendChild(lg);
+  parent.appendChild(fs); return fs;
+}
+class UIManager{
+  constructor(){
+    this.panels=['menu','setup','pause','results','help','settings'];
+    this.current='menu'; this.settingsFrom='menu';
+    this.setupCfg=null; this.tourDiff=1;
+    for(const b of document.querySelectorAll('[data-back]'))
+      b.onclick=()=>{ audio.gesture(); this.openSettings_back(b.dataset.back); };
+    el('setupStart').onclick=()=>this.startSetup();
+    /* главное меню */
+    el('mQuick').onclick=()=>{ audio.gesture(); this.openSetup('quick'); };
+    el('mTour').onclick=()=>{ audio.gesture(); this.openSetup('tour'); };
+    el('mStorm').onclick=()=>{ audio.gesture(); this.openSetup('storm'); };
+    el('mTraining').onclick=()=>{ audio.gesture(); this.openSetup('training'); };
+    el('mSettings').onclick=()=>{ audio.gesture(); this.settingsFrom='menu'; this.syncSettings(); this.showPanel('settings'); };
+    el('mHelp').onclick=()=>{ audio.gesture(); this.showPanel('help'); };
+    /* пауза */
+    el('pResume').onclick=()=>{ audio.gesture(); game.resume(); };
+    el('pRestart').onclick=()=>{ audio.gesture(); this.hideAll(); game.restartMatch(); };
+    el('pSettings').onclick=()=>{ audio.gesture(); this.settingsFrom='pause'; this.syncSettings(); this.showPanel('settings'); };
+    el('pMenu').onclick=()=>{ audio.gesture(); game.toMenu(); };
+    /* результаты */
+    el('rRematch').onclick=()=>{ audio.gesture(); this.hideAll(); game.startMatch(game.cfg); };
+    el('rMenu').onclick=()=>{ audio.gesture(); game.toMenu(); };
+    el('rNext').onclick=()=>{ audio.gesture(); this.hideAll(); game.startMatch(this.nextTourCfg()); };
+    /* кнопки над canvas */
+    el('btnPause').onclick=()=>{ audio.gesture(); game.togglePause(); };
+    el('btnMute').onclick=()=>{ game.handleKey('KeyM'); };
+    /* настройки */
+    const bind=(id,key,isNum)=>{
+      const e=el(id);
+      e.oninput=()=>{ audio.gesture();
+        S[key]=isNum?(+e.value):(e.checked);
+        saveSettings(); audio.applyVolumes(); if(S.soundOn) audio.startMusic();
+        if(id==='setLessFx') game.weather.resetBallParticlesCap();
+      };
+    };
+    bind('setMusic','musicVol',true); bind('setSfx','sfxVol',true);
+    bind('setLessFx','lessFx'); bind('setContrast','contrast');
+    bind('setFlash','flash'); bind('setHint','hint'); bind('setDebug','debug');
+    el('setDefaults').onclick=()=>{ audio.gesture();
+      Object.assign(S,JSON.parse(JSON.stringify(DEFAULT_SETTINGS)));
+      saveSettings(); this.syncSettings(); audio.applyVolumes();
+      el('setNote').textContent='Настройки сброшены по умолчанию.';
+    };
+    this.wipeArmed=0;
+    el('setWipe').onclick=()=>{ audio.gesture();
+      const now=Date.now();
+      if(now-this.wipeArmed>4000){ this.wipeArmed=now;
+        el('setWipe').textContent='Точно удалить всё? Нажми ещё раз'; return; }
+      this.wipeArmed=0; store.wipe();
+      Object.assign(S,JSON.parse(JSON.stringify(DEFAULT_SETTINGS)));
+      Object.assign(R,JSON.parse(JSON.stringify(DEFAULT_RECORDS)));
+      this.syncSettings(); this.refreshRecords();
+      el('setWipe').textContent='Сбросить прогресс';
+      el('setNote').textContent='Прогресс удалён.';
+    };
+    /* Enter/Esc для панелей */
+    addEventListener('keydown',e=>{
+      if(e.code==='Enter'){
+        if(this.current==='setup'){ e.preventDefault(); this.startSetup(); }
+        else if(this.current==='results'&&!el('rNext').classList.contains('hidden')) el('rNext').click();
+        else if(this.current==='results') el('rRematch').click();
+        else if(this.current==='menu') this.openSetup('quick');
+      }
+      if(e.code==='Escape'&&['setup','help'].includes(this.current)) this.openSettings_back('menu');
+    });
+    this.syncMute();
+  }
+  openSettings_back(){
+    /* из настроек возвращаемся туда, откуда их открыли (меню или пауза) */
+    if(this.current==='settings') this.showPanel(this.settingsFrom==='pause'?'pause':'menu');
+    else this.showPanel('menu');
+  }
+  showPanel(name){
+    this.current=name;
+    for(const p of this.panels) el(p).classList.toggle('hidden',p!==name);
+    if(name==='menu') this.refreshRecords();
+    if(name===null) return;
+  }
+  hideAll(){ for(const p of this.panels) el(p).classList.add('hidden'); this.current=null; }
+  syncMute(){ el('btnMute').textContent=S.soundOn?'♪':'✕'; }
+  syncSettings(){
+    el('setMusic').value=S.musicVol; el('setSfx').value=S.sfxVol;
+    el('setLessFx').checked=S.lessFx; el('setContrast').checked=S.contrast;
+    el('setFlash').checked=S.flash; el('setHint').checked=S.hint; el('setDebug').checked=S.debug;
+    this.syncMute();
+  }
+  refreshRecords(){
+    el('recWins').textContent=R.wins; el('recGames').textContent=R.games;
+    el('recBestRally').textContent=R.bestRally;
+    el('achList').innerHTML=Object.entries(ACH_NAMES).map(([id,n])=>
+      `<span class="${R.ach[id]?'got':''}">${R.ach[id]?'🏆':'▢'} ${n}</span>`).join(' · ');
+  }
+  /* -------- экран настройки режима -------- */
+  openSetup(mode){
+    this.weatherSel=null; this.locFs=null; this.weatherFs=null;
+    const c={ mode, difficulty:2, season:'auto', loc:0, weather:'dynamic',
+      windMode:'moderate', bonuses:true, score:11, speed:1, guide:true,
+      adaptive:false, duration:0 };
+    if(mode==='storm'){ c.difficulty=3; c.windMode='storm'; c.weather='dynamic'; }
+    if(mode==='tour'){ c.weather='dynamic'; }
+    if(mode==='training'){ c.difficulty=2; c.bonuses=false; c.score=0; }
+    this.setupCfg=c;
+    this.renderSetup();
+    this.showPanel('setup');
+  }
+  renderSetup(){
+    const c=this.setupCfg, body=el('setupBody');
+    body.innerHTML='';
+    el('setupTitle').textContent={quick:'Быстрый матч',tour:'Тур сезонов',storm:'Штормовой вызов',training:'Тренировка'}[c.mode];
+    const fs1=fieldset(body,'Сложность ИИ');
+    chipGroup(fs1,AI_LEVELS.map((l,i)=>({val:i,label:l.name})),c.difficulty,v=>c.difficulty=+v);
+    if(c.mode!=='training'){
+      const fs2=fieldset(body,'Счёт до победы');
+      chipGroup(fs2,[{val:5,label:'До 5 (быстро)'},{val:11,label:'До 11 (классика)'},{val:15,label:'До 15 (длинно)'}],c.score,v=>c.score=+v);
+    }
+    if(c.mode==='tour'){
+      const fs3=fieldset(body,'Сложность тура');
+      chipGroup(fs3,[{val:'fixed',label:'Фиксированная (Любитель→Легенда)'},{val:'adaptive',label:'Адаптивная'}],
+        c.adaptive?'adaptive':'fixed',v=>c.adaptive=(v==='adaptive'));
+    }
+    if(c.mode==='quick'||c.mode==='training'){
+      const fsS=fieldset(body,'Сезон');
+      chipGroup(fsS,[{val:'auto',label:'🎲 авто'},...SEASONS.map((s,i)=>({val:i,label:s.name}))],
+        c.season,v=>{ c.season=v==='auto'?'auto':+v; this.renderSetupWeather(); });
+      this.setupAnchor=document.createElement('div'); body.appendChild(this.setupAnchor);
+      this.renderSetupWeather();
+      const fsWind=fieldset(body,'Влияние ветра');
+      chipGroup(fsWind,[{val:'cosmetic',label:'Косметика'},{val:'moderate',label:'Умеренная физика'},{val:'storm',label:'Шторм'}],c.windMode,v=>c.windMode=v);
+      const fsB=fieldset(body,'Бонусы');
+      chipGroup(fsB,[{val:true,label:'Включены'},{val:false,label:'Выключены'}],c.bonuses,v=>c.bonuses=(v===true||v==='true'));
+    }
+    if(c.mode==='training'){
+      const fsSp=fieldset(body,'Скорость мяча на подаче');
+      chipGroup(fsSp,[{val:0.7,label:'Медленно'},{val:1,label:'Обычно'},{val:1.3,label:'Быстро'}],c.speed,v=>c.speed=+v);
+      const fsG=fieldset(body,'Направляющая траектория');
+      chipGroup(fsG,[{val:true,label:'Видна'},{val:false,label:'Скрыта'}],c.guide,v=>c.guide=(v===true||v==='true'));
+      const fsD=fieldset(body,'Длительность');
+      chipGroup(fsD,[{val:0,label:'Бессрочно'},{val:120,label:'2 минуты'},{val:300,label:'5 минут'}],c.duration,v=>c.duration=+v);
+    }
+    el('setupHint').textContent=this.hintText(c);
+  }
+  renderSetupWeather(){
+    /* перерисовка локаций и списка погод при смене сезона (погода совместима с сезоном) */
+    if(this.locFs) this.locFs.remove();
+    if(this.weatherFs) this.weatherFs.remove();
+    const c=this.setupCfg, body=el('setupBody');
+    const sid=c.season==='auto'?'spring':SEASONS[c.season].id;
+    this.locFs=fieldset(body,'Локация'); body.insertBefore(this.locFs,this.setupAnchor);
+    const locs=SEASONS.find(s=>s.id===sid).locations;
+    chipGroup(this.locFs,[{val:-1,label:'🎲 авто'},...locs.map((l,i)=>({val:i,label:l.name}))],c.loc,v=>c.loc=+v);
+    this.weatherFs=fieldset(body,'Погода'); body.insertBefore(this.weatherFs,this.setupAnchor);
+    this.weatherSel=document.createElement('select');
+    const dyn=document.createElement('option'); dyn.value='dynamic';
+    dyn.textContent='Динамическая (меняется в матче)';
+    this.weatherSel.appendChild(dyn);
+    for(const k of c.season==='auto'?ALL_WEATHER:SEASON_WEATHER[sid]){
+      const o=document.createElement('option'); o.value=k;
+      o.textContent=WEATHER_DEFS[k].name;
+      this.weatherSel.appendChild(o);
+    }
+    this.weatherSel.value='dynamic';
+    const lab=document.createElement('label'); lab.className='ctl'; lab.append('Выбор: '); lab.appendChild(this.weatherSel);
+    this.weatherFs.appendChild(lab);
+  }
+  hintText(c){
+    const wind={cosmetic:'Ветер двигает только частицы — физика мяча не меняется.',
+      moderate:'Ветер умеренно сносит мяч — учитывайте стрелку и шкалу в HUD.',
+      storm:'Штормовые порывы заметно влияют на полёт. Баланс важнее хаоса.'}[c.windMode];
+    let t=wind+(c.bonuses?' Бонусы активны: подбирайте их мячом в центре поля.':' Бонусы выключены.');
+    if(c.mode==='tour') t+=' Тур: четыре главы (Весна→Зима), по матчу на сезон; поражение завершает тур.';
+    if(c.mode==='storm') t+=' Сезон выбирается случайно, погода меняется часто, бонусов больше.';
+    if(c.mode==='training') t+=' Очки не заканчивают матч (если длительность бессрочная).';
+    return t;
+  }
+  startSetup(){
+    audio.gesture();
+    const c=this.setupCfg;
+    let season=c.season==='auto'?(Math.random()*4|0):c.season;
+    let loc=c.loc===-1||c.season==='auto'?(Math.random()*2|0):c.loc;
+    let weatherOpt=this.weatherSel?this.weatherSel.value:'dynamic';
+    const cfg={
+      mode:c.mode, difficulty:c.difficulty, seasonIdx:season, locIdx:loc,
+      dynamicWeather:weatherOpt==='dynamic', fixedWeather:weatherOpt,
+      windMode:c.windMode, bonusesOn:c.bonuses,
+      winningScore:c.mode==='training'?0:c.score,
+      competitive:c.mode==='quick'||c.mode==='tour',
+      serveSpeedFactor:c.speed||1, guide:c.guide, durationSec:c.duration||0,
+      tourIdx:0
+    };
+    this.hideAll();
+    if(c.mode==='tour'){ this.tourDiff=c.adaptive?1:TOUR_DIFFS[0]; cfg.difficulty=this.tourDiff;
+      cfg.seasonIdx=0; cfg.locIdx=0; game.startMatch(cfg); game.ai=new ComputerAI(this.tourDiff); }
+    else game.startMatch(cfg);
+    if(weatherOpt!=='dynamic'){ game.weather.changeTo(weatherOpt); game.weather.dynamic=false; }
+  }
+  nextTourCfg(){
+    const cfg=game.cfg;
+    const idx=cfg.tourIdx+1;
+    this.tourDiff=clamp(this.tourDiff+1,1,4);
+    const nc={...cfg, tourIdx:idx, difficulty:this.tourDiff,
+      seasonIdx:idx, locIdx:idx===3?1:(Math.random()*2|0)};
+    return nc;
+  }
+  showResults(g,winner){
+    el('resTitle').textContent=g.cfg.mode==='training'?'Тренировка завершена':
+      (winner==='p'?'🏆 Победа!':g.cfg.mode==='tour'?`Тур завершён на главе ${g.cfg.tourIdx+1}`:'Поражение');
+    const mm=Math.floor(g.matchTime/60), ss=Math.floor(g.matchTime%60);
+    const rows=[
+      ['Счёт',`${g.score.p} : ${g.score.a}`],
+      ['Длительность',`${mm}:${String(ss).padStart(2,'0')}`],
+      ['Макс. комбо',g.maxRally],
+      ['Успешные отражения',g.playerHits],
+      ['Сезон / локация',g.cfg.seasonIdx!==undefined?`${SEASONS[g.cfg.seasonIdx].name} · ${SEASONS[g.cfg.seasonIdx].locations[g.cfg.locIdx].name}`:'—'],
+      ['Погода в конце',WEATHER_DEFS[g.weather.cur].name]
+    ];
+    el('resStats').innerHTML=rows.map(([k,v])=>`<span>${k}:</span><b>${v}</b>`).join('');
+    el('resAch').innerHTML=g.newAch.length?'🏆 Новые достижения: '+g.newAch.join(', '):'';
+    const nextBtn=el('rNext');
+    const hasNext=winner==='p'&&g.cfg.mode==='tour'&&g.cfg.tourIdx<3;
+    nextBtn.classList.toggle('hidden',!hasNext);
+    if(hasNext) nextBtn.textContent=`Следующий сезон: ${SEASONS[g.cfg.tourIdx+1].name} →`;
+    el('rRematch').classList.toggle('hidden',g.cfg.mode==='tour');
+    this.showPanel('results');
+  }
+}
+
+/* ============================ ЗАПУСК ============================ */
+game=new Game(); ui=new UIManager();
+game.initIdle();
+/* Автопауза при скрытии вкладки/потере фокуса */
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden&&['SERVE','PLAYING','POINT'].includes(game.state)) game.togglePause();
+});
+addEventListener('blur',()=>{ if(['SERVE','PLAYING','POINT'].includes(game.state)) game.togglePause(); });
+/* Звук — только после взаимодействия пользователя */
+let gestureDone=false;
+function firstGesture(){
+  if(gestureDone) return; gestureDone=true;
+  audio.gesture(); audio.startMusic();
+}
+addEventListener('pointerdown',firstGesture);
+addEventListener('keydown',firstGesture);
+/* Главный цикл: фиксированный шаг физики + рендер с интерполяцией */
+let lastT=performance.now();
+function frame(now){
+  const dt=(now-lastT)/1000; lastT=now;
+  if(dt>0&&dt<0.5) FPS=lerp(FPS,1/dt,0.06);
+  game.updateFrame(dt);
+  const alpha=clamp(game.acc/CONFIG.fixedDt,0,1);
+  Renderer.draw(alpha);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
