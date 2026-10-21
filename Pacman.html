@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Pac-Man</title>
+<style>
+  body { background:#111; color:#fff; font-family:monospace; display:flex; flex-direction:column; align-items:center; }
+  canvas { background:#000; margin-top:12px; max-width:92vw; }
+  #hud { margin-top:10px; font-size:18px; }
+</style>
+</head>
+<body>
+<div id="hud"></div>
+<canvas id="cv"></canvas>
+<script>
+"use strict";
+// Each row defines the left half + centre col; the right half is its mirror.
+// '#' wall, ' ' pellet, 'o' power pellet, '-' ghost house door
+const H = [ // rows 0..10 (row 10 = tunnel row, also the ghost-house top interior)
+  "##########",
+  "#o        ",
+  "# ### ##  ",
+  "#  #      ",
+  "# ## # ## ",
+  "#        #",
+  "## ## ##  ",
+  "#   #     ",
+  "#  #      ",
+  "#  #   #--", // '-' at cols 8,9 → door spans cols 8..10
+  "#      #  ", // open corridor + house interior cols 8..10
+];
+const MID = [ // rows 11..13: house interior, house bottom, street
+  "#  #   #  ",
+  "#  #   ###",
+  "#  #      ",
+];
+function buildMap() {
+  const rows = [...H, ...MID, ...H.slice(0, 7).reverse()];
+  return rows.map((r, y) => {
+    const full = (r + [...r.slice(0, 9)].reverse().join("")).split("");
+    if (y === 10) { full[0] = "."; full[W - 1] = "."; } // tunnel openings (no pellet)
+    if (y >= 10 && y <= 11) for (let x = 8; x <= 10; x++) full[x] = "."; // ghost-house floor: no pellets (sealed, unreachable → would block win)
+    return full.join("");
+  });
+}
+const W = 19, HT = 21, T = 32;
+const GRID = buildMap();
+const cv = document.getElementById("cv");
+cv.width = W * T; cv.height = HT * T;
+const cx = cv.getContext("2d");
+
+const wall = (x, y, dead = false) => {
+  if (y < 0 || y >= HT) return true;
+  if (x < 0 || x >= W) return y === 10 ? false : true;
+  const c = GRID[y][x];
+  return c === "#" || (c === "-" && !dead);
+};
+
+let grid, score, lives, totalPellets, fright, won, lost, tGlobal, speedBoost, frozen;
+const PAC = { x: 9, y: 13, tx: -1, ty: 0, prog: 0, dir: [0,0], want: [0,0], mouth: 0, speed: 0.085, dead: false };
+const HOME = [[8,10],[10,10],[8,11],[10,11]];
+const GHOST_COLORS = ["red","pink","cyan","orange"];
+let ghosts, bonus, bonusTimer;
+
+// smooth movement: an actor slides from tile (x,y) toward tile (tx,ty); prog 0..1
+function neigh(a, d) {
+  let nx = a.x + d[0]; const ny = a.y + d[1];
+  if (a.y === 10) nx = (nx + W) % W;
+  return [nx, ny];
+}
+function setDir(a, dx, dy) {
+  if (!dx && !dy) return false;
+  const [nx, ny] = neigh(a, [dx, dy]);
+  if (nx < 0 || nx >= W || ny < 0 || ny >= HT) return false;
+  if (wall(nx, ny, a.dead)) return false;
+  a.dir = [dx, dy]; a.tx = nx; a.ty = ny; a.prog = 0; return true;
+}
+function advance(a) { // true = just landed on the next tile
+  if (a.tx < 0) return false;
+  a.prog += a.speed;
+  if (a.prog >= 1) { a.x = a.tx; a.y = a.ty; a.tx = -1; a.prog = 0; return true; }
+  return false;
+}
+function reverse(a) {
+  if (a.tx < 0) { a.dir = [-a.dir[0], -a.dir[1]]; return; }
+  const ox = a.x, oy = a.y;
+  a.x = a.tx; a.y = a.ty; a.tx = ox; a.ty = oy; a.prog = 1 - a.prog;
+  a.dir = [-a.dir[0], -a.dir[1]];
+}
+const px = a => a.x + (a.tx >= 0 ? a.dir[0] * a.prog : 0);
+const py = a => a.y + (a.tx >= 0 ? a.dir[1] * a.prog : 0);
+
+const inHouse = g => !g.dead && g.y >= 10 && g.y <= 11 && g.x >= 8 && g.x <= 10;
+
+function resetActors() {
+  Object.assign(PAC, { x: 9, y: 13, tx: -1, ty: 0, prog: 0, dir: [0,0], want: [0,0] });
+  ghosts = GHOST_COLORS.map((c, i) => ({
+    x: HOME[i][0], y: HOME[i][1], tx: -1, ty: 0, prog: 0,
+    dir: [0,-1], color: c, homeIdx: i, releaseAt: 2 + i * 3, dead: false, speed: 0.055,
+  }));
+  fright = 0;
+}
+function reset(full) {
+  grid = GRID.map(r => [...r]);
+  totalPellets = grid.flat().filter(c => c === " " || c === "o").length;
+  if (full) { score = 0; lives = 3; }
+  lost = false; won = false; tGlobal = 0;
+  bonus = null; bonusTimer = 300; speedBoost = 0; frozen = 0;
+  resetActors();
+}
+reset(true);
+
+function spawnBonus() {
+  for (let tries = 0; tries < 200; tries++) {
+    const x = 1 + (tGlobal * 7 + tries * 13) % (W - 2), y = 1 + (tGlobal * 3 + tries * 29) % (HT - 2);
+    const c = GRID[y][x];
+    if ((c === " " || c === "o") && !(x >= 7 && x <= 11 && y >= 9 && y <= 12) &&
+        Math.abs(x - PAC.x) + Math.abs(y - PAC.y) > 3) {
+      const roll = Math.random(); // cherry makes ghosts edible, other bonuses add spice
+      const kind = roll < 0.35 ? "cherry" : roll < 0.7 ? "speed" : roll < 0.9 ? "freeze" : "life";
+      bonus = { x, y, ttl: 900, kind };
+      return;
+    }
+  }
+}
+
+function eat(x, y) {
+  const c = grid[y][x];
+  if (c === " ") { grid[y][x] = "."; score += 10; totalPellets--; }
+  else if (c === "o") {
+    grid[y][x] = "."; score += 50; totalPellets--;
+    fright = 360; ghosts.forEach(g => { if (!g.dead && !inHouse(g)) reverse(g); });
+  }
+  if (bonus && bonus.x === x && bonus.y === y) {
+    const k = bonus.kind;
+    bonus = null; bonusTimer = 800;
+    score += 100;
+    if (k === "cherry") {
+      fright = Math.max(fright, 600);
+      ghosts.forEach(g => { if (!g.dead && !inHouse(g)) reverse(g); });
+    } else if (k === "speed") speedBoost = 480;           // 8 s of double speed
+    else if (k === "freeze") frozen = 360;                // 6 s of frozen ghosts
+    else if (k === "life") lives = Math.min(lives + 1, 6); // rare extra heart
+  }
+  if (totalPellets === 0) won = true;
+}
+
+const DIRS = [[0,-1],[0,1],[-1,0],[1,0]];
+function tryMove(a, dir, dead = false) { // tile-jump fallback for the house, keeps old API
+  const [nx, ny] = neigh(a, dir);
+  if (wall(nx, ny, dead)) return false;
+  a.x = nx; a.y = ny; a.tx = -1; a.prog = 0; return true;
+}
+
+let bfsCache = {};
+function homeBfs(target) { // shortest path lengths to home, door passable (dead ghosts fly through it)
+  const key = target.join(",");
+  if (bfsCache[key]) return bfsCache[key];
+  const dist = Array.from({ length: HT }, () => Array(W).fill(-1));
+  dist[target[1]][target[0]] = 0;
+  const q = [target];
+  while (q.length) {
+    const [x, y] = q.shift();
+    for (const [dx, dy] of DIRS) {
+      let nx = x + dx; const ny = y + dy;
+      if (ny < 0 || ny >= HT) continue;
+      if (y === 10) nx = (nx + W) % W; else if (nx < 0 || nx >= W) continue;
+      if (dist[ny][nx] !== -1 || GRID[ny][nx] === "#") continue;
+      dist[ny][nx] = dist[y][x] + 1; q.push([nx, ny]);
+    }
+  }
+  return bfsCache[key] = dist;
+}
+
+function houseStep(g) { // tile-bob inside the sealed house until released
+  g.tx = -1; g.prog = 0;
+  if (tGlobal < g.releaseAt * 60) {
+    g.prog += 0.06;
+    if (g.prog >= 1) {
+      g.prog = 0;
+      if (g.dir[1]) g.y += g.dir[1];
+      if (g.y <= 10) { g.y = 10; g.dir = [0,1]; }
+      else if (g.y >= 11) { g.y = 11; g.dir = [0,-1]; }
+    }
+  } else if (g.x !== 9) { g.x += Math.sign(9 - g.x); }
+  else { g.x = 9; g.y = 9; g.dir = [0,-1]; } // stand on the door; decided from outside next frame
+}
+
+function bfsStep(g) { // dead: follow BFS gradient home (can reverse, it has no pride)
+  const dist = homeBfs(HOME[g.homeIdx]);
+  const here = dist[g.y][g.x];
+  const ok = d => {
+    const [nx, ny] = neigh(g, d);
+    if (nx < 0 || nx >= W || ny < 0 || ny >= HT || wall(nx, ny, true)) return false;
+    return here < 0 || dist[ny][nx] === here - 1;
+  };
+  let step = DIRS.filter(ok);
+  if (!step.length) step = DIRS.filter(d => { const [nx,ny]=neigh(g,d); return nx>=0&&nx<W&&ny>=0&&ny<HT&&!wall(nx,ny,true); });
+  if (step.length) setDir(g, step[0][0], step[0][1]);
+}
+
+function ghostDecide(g) {
+  let tx, ty;
+  if (fright > 0) { tx = (g.x + 7 + g.homeIdx * 5) % W; ty = (g.y + 5) % HT; }
+  else {
+    const chase = { red: [PAC.x, PAC.y],
+                    pink: [PAC.x + PAC.dir[0] * 4, PAC.y + PAC.dir[1] * 4],
+                    cyan: [PAC.x - PAC.dir[0] * 4, PAC.y + 4],
+                    orange: [PAC.x, PAC.y] }[g.color];
+    if (g.color === "orange" && Math.abs(g.x-PAC.x)+Math.abs(g.y-PAC.y) > 8) { tx = 1; ty = HT-2; }
+    else { tx = chase[0]; ty = chase[1]; }
+  }
+  // smarter: judge a direction by where it leads over the next TWO tiles, not one
+  const score2 = d => {
+    const [x1, y1] = neigh(g, d);
+    let s = (x1-tx)**2 + (y1-ty)**2;
+    const [x2, y2] = neigh({x:x1,y:y1}, d);
+    if (x2>=0 && x2<W && y2>=0 && y2<HT && !wall(x2,y2)) s += (x2-tx)**2 + (y2-ty)**2;
+    else s += 3 * s; // dead-end: strongly penalised
+    return s;
+  };
+  const opts = DIRS.filter(d => !(d[0] === -g.dir[0] && d[1] === -g.dir[1]))
+                   .filter(d => { const [nx,ny]=neigh(g,d); return nx>=0&&nx<W&&ny>=0&&ny<HT&&!wall(nx,ny); });
+  const cand = opts.length ? opts : DIRS.filter(d => { const [nx,ny]=neigh(g,d); return nx>=0&&nx<W&&ny>=0&&ny<HT&&!wall(nx,ny); });
+  if (!cand.length) return;
+  let best = cand[0], bs = Infinity;
+  for (const d of cand) { const s = score2(d); if (s < bs) { bs = s; best = d; } }
+  setDir(g, best[0], best[1]);
+}
+
+function moveGhost(g) {
+  g.speed = g.dead ? 0.09 : fright > 0 ? 0.035 :
+            (g.color === "red" && totalPellets < 30) ? 0.075 : 0.055; // red speeds up near the end
+  if (inHouse(g)) { houseStep(g); return; }
+  const arrived = advance(g);
+  if (arrived || g.tx < 0) {
+    if (g.dead) {
+      if (g.x >= 8 && g.x <= 10 && g.y >= 10 && g.y <= 11) { g.dead = false; g.dir = [0,-1]; }
+      else bfsStep(g);
+    } else ghostDecide(g);
+  }
+}
+
+function collide() {
+  for (const g of ghosts) {
+    if (Math.abs(px(PAC)-px(g)) < 0.7 && Math.abs(py(PAC)-py(g)) < 0.7) {
+      if (g.dead) continue;                       // skeleton already heading home
+      if (fright > 0) { g.dead = true; score += 200; }
+      else return true;
+    }
+  }
+  return false;
+}
+
+let last = 0;
+function frame(ts) {
+  requestAnimationFrame(frame);
+  if (ts - last < 1000/60) return;
+  last = ts;
+  if (won || lost) { if (keys[" "]) reset(true); draw(); return; }
+  tGlobal++;
+  if (fright > 0) fright--;
+  if (speedBoost > 0) speedBoost--;
+  if (frozen > 0) frozen--;
+  if (bonus) { if (--bonus.ttl <= 0) bonus = null; }
+  else if (--bonusTimer <= 0) spawnBonus();
+
+  PAC.speed = 0.085 * (speedBoost > 0 ? 1.8 : 1);
+  if (advance(PAC)) {
+    eat(PAC.x, PAC.y);
+    if (!setDir(PAC, PAC.want[0], PAC.want[1])) setDir(PAC, PAC.dir[0], PAC.dir[1]);
+    PAC.mouth = (PAC.mouth + 1) % 2;
+  } else if (PAC.tx < 0 && (PAC.want[0] || PAC.want[1])) {
+    setDir(PAC, PAC.want[0], PAC.want[1]);
+  }
+  // pressing the opposite direction flips Pac-Man mid-segment, like the original
+  if (PAC.tx >= 0 && (PAC.want[0] || PAC.want[1]) &&
+      PAC.want[0] === -PAC.dir[0] && PAC.want[1] === -PAC.dir[1]) reverse(PAC);
+
+  for (const g of ghosts) { if (frozen > 0 && !g.dead) continue; moveGhost(g); }
+  if (collide()) {
+    lives--;
+    if (lives <= 0) lost = true; else resetActors();
+  }
+  draw();
+}
+
+function draw() {
+  cx.fillStyle = "#000"; cx.fillRect(0, 0, cv.width, cv.height);
+  for (let y = 0; y < HT; y++) for (let x = 0; x < W; x++) {
+    const c = grid[y][x];
+    if (c === "#") { cx.fillStyle = "#1133cc"; cx.fillRect(x*T+2, y*T+2, T-4, T-4); }
+    else if (c === "-") { cx.fillStyle = "#f8b8f8"; cx.fillRect(x*T, y*T+T/2-2, T, 4); }
+    else if (c === " ") { cx.fillStyle = "#ffd"; cx.beginPath(); cx.arc(x*T+T/2, y*T+T/2, 3, 0, 7); cx.fill(); }
+    else if (c === "o") { cx.fillStyle = "#ffd"; cx.beginPath(); cx.arc(x*T+T/2, y*T+T/2, 7, 0, 7); cx.fill(); }
+  }
+  if (bonus && tGlobal % 40 < 26) { // blinking bonus: eat it for a random boon
+    const bx = bonus.x*T+T/2, by = bonus.y*T+T/2;
+    if (bonus.kind === "cherry") { // the classic: ghosts become edible
+      cx.fillStyle = "#e33"; cx.beginPath(); cx.arc(bx-4, by+4, 5, 0, 7); cx.arc(bx+4, by+5, 5, 0, 7); cx.fill();
+      cx.strokeStyle = "#2c2"; cx.lineWidth = 2; cx.beginPath();
+      cx.moveTo(bx-4, by+1); cx.quadraticCurveTo(bx, by-9, bx+5, by-8); cx.stroke();
+    } else {
+      const icon = { speed: "⚡", freeze: "❄", life: "❤" }[bonus.kind];
+      cx.font = `${T-8}px monospace`; cx.textAlign = "center"; cx.textBaseline = "middle";
+      cx.fillStyle = { speed: "#ff0", freeze: "#7df", life: "#f55" }[bonus.kind];
+      cx.fillText(icon, bx, by+1);
+    }
+  }
+  // pacman
+  const a = PAC.mouth ? 0.25 : 0.05, mx = (px(PAC)+0.5)*T, my = (py(PAC)+0.5)*T;
+  const ang = Math.atan2(PAC.dir[1], PAC.dir[0]) || 0;
+  cx.fillStyle = "#ff0"; cx.beginPath(); cx.moveTo(mx, my);
+  cx.arc(mx, my, T/2-2, ang + a*Math.PI, ang - a*Math.PI); cx.closePath(); cx.fill();
+  // ghosts
+  for (const g of ghosts) {
+    const gx = px(g)*T, gy = py(g)*T;
+    let col = g.color;
+    if (g.dead) col = "#888";
+    else if (fright > 0) col = (fright < 90 && Math.floor(fright/15)%2) ? "#fff" : "#22f";
+    cx.fillStyle = col;
+    cx.beginPath();
+    cx.arc(gx+T/2, gy+T/2, T/2-3, Math.PI, 0);
+    cx.lineTo(gx+T-3, gy+T-3);
+    for (let i = 0; i < 3; i++) cx.lineTo(gx+T-3-(i*2+1)*(T-6)/6, gy+T-3-((i%2)?4:0));
+    cx.lineTo(gx+3, gy+T-3); cx.closePath(); cx.fill();
+    if (!g.dead) {
+      for (const ex of [-4, 4]) {
+        cx.fillStyle = "#fff"; cx.beginPath(); cx.arc(gx+T/2+ex, gy+T/2-2, 4, 0, 7); cx.fill();
+        cx.fillStyle = "#00f"; cx.beginPath(); cx.arc(gx+T/2+ex+g.dir[0]*2, gy+T/2-2+g.dir[1]*2, 2, 0, 7); cx.fill();
+      }
+    }
+  }
+  document.getElementById("hud").textContent =
+    `Счёт: ${score}   Жизни: ${"♥".repeat(Math.max(lives,0))}` +
+    (speedBoost > 0 ? `  ⚡${Math.ceil(speedBoost/60)}с` : "") +
+    (frozen > 0 ? `  ❄${Math.ceil(frozen/60)}с` : "") +
+    (fright > 0 ? `  😱${Math.ceil(fright/60)}с` : "") +
+    (won ? "  ПОБЕДА! Пробел — заново" : lost ? "  ИГРА ОКОНЧЕНА. Пробел — заново" : "");
+}
+const keys = {};
+addEventListener("keydown", e => {
+  keys[e.key] = true;
+  const m = { ArrowUp:[0,-1], ArrowDown:[0,1], ArrowLeft:[-1,0], ArrowRight:[1,0],
+              w:[0,-1], s:[0,1], a:[-1,0], d:[1,0], ц:[0,-1], ы:[0,1], ф:[-1,0], в:[1,0] }[e.key];
+  if (m) { PAC.want = m; e.preventDefault(); }
+});
+requestAnimationFrame(frame);
+
+// self-check (run in console): maze sanity
+function selfCheck() {
+  const bad = GRID.filter(r => r.length !== W).map((r,i) => [i, r.length]);
+  // horizontal mirror is guaranteed by buildMap; only the ghost-house band breaks vertical symmetry
+  const asym = GRID.map((r,i) => r === [...r].reverse().join("") ? null : i).filter(v => v !== null);
+  const seen = new Set(); const q = [[9,13]];
+  if (GRID[13][9] !== " ") bad.push(["start not open"]);
+  while (q.length) { const [x,y] = q.pop(); const k = x+","+y;
+    if (seen.has(k) || wall(x,y)) continue; seen.add(k);
+    for (const [dx,dy] of DIRS) { let nx=x+dx; if (y===10) nx=(nx+W)%W; q.push([nx, y+dy]); } }
+  const inH = (x,y) => x >= 8 && x <= 10 && y >= 10 && y <= 11; // sealed by the door, on purpose
+  const unreachable = GRID.flatMap((r,y) => [...r].map((c,x) => [c,x,y]))
+    .filter(([c,x,y]) => (c === " " || c === "o") && !inH(x,y) && !seen.has(x+","+y));
+  return { bad, asym, unreachable };
+}
+console.log("selfCheck:", JSON.stringify(selfCheck()));
+</script>
+</body>
+</html>
